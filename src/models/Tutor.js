@@ -1,32 +1,30 @@
-
-
 const mongoose = require("mongoose");
 const { Schema } = mongoose;
-const instituteSchema = new Schema(
+
+const tutorSchema = new Schema(
   {
   
     name: { type: String, required: true, trim: true, index: true },
     email: { type: String, required: true, unique: true, lowercase: true },
     phone: { type: String, required: true },
-    
+    gender: { type: String, enum: ["male", "female", "other"] },
 
- 
     address: {
-      street: String,
       city: { type: String, index: true },
-      state: String,
-      pincode: String
+      state: String
     },
-    description: { type: String },
+
+    // Ratings
     rating: {
       average: { type: Number, default: 0 },
       count: { type: Number, default: 0 }
     },
 
+
     status: {
       type: String,
-      enum: ["pending", "approved", "rejected"],
-      default: "pending"
+      enum: ["active", "inactive", "blocked"],
+      default: "active"
     }
   },
   { timestamps: true }
@@ -34,5 +32,4 @@ const instituteSchema = new Schema(
 
 
 
-
-module.exports = mongoose.model("Institute", instituteSchema);
+module.exports = mongoose.model("Tutor", tutorSchema);
