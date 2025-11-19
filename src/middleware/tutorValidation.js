@@ -1,6 +1,7 @@
-const { body } = require("express-validator");
+import { body } from "express-validator";
 
-exports.tutorValidation = [
+
+export const tutorValidation = [
   
   body("name")
     .notEmpty()
@@ -34,6 +35,13 @@ exports.tutorValidation = [
     .optional()
     .isString()
     .withMessage("City must be a string"),
+
+    body("password")
+  .notEmpty()
+  .withMessage("Password is required")
+  .isLength({ min: 6 })
+  .withMessage("Password must be at least 6 characters"),
+
 
  
   body("status")
