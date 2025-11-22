@@ -1,6 +1,6 @@
-const { body } = require("express-validator");
+import { body } from "express-validator";
 
-exports.instituteValidation = [
+export const instituteValidation = [
 
   body("name")
     .notEmpty()
@@ -45,5 +45,13 @@ exports.instituteValidation = [
   body("status")
     .optional()
     .isIn(["pending", "approved", "rejected"])
-    .withMessage("Invalid status value")
+    .withMessage("Invalid status value"),
+
+
+  body("password")
+  .notEmpty()
+  .withMessage("Password is required")
+  .isLength({ min: 6 })
+  .withMessage("Password must be at least 6 characters")
+
 ];
