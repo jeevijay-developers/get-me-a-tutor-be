@@ -1,31 +1,35 @@
+
+
+import "dotenv/config";
+
+
 import express from "express";
-import dotenv from "dotenv";
-import connectDB from "./src/config/db.js";
+import mongoose from "mongoose";
 import authRoutes from "./src/routes/authRoutes.js";
-
-
-
-
-
-dotenv.config();
+import rateLimit from "express-rate-limit";
 
 const app = express();
 app.use(express.json());
-app.use("/api/auth", authRoutes);
 
+// basic rate limiter for auth endpoints
+const authLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10,
+  message: { message: "Too many requests, try again later." }
+});
 
-app.get("/", (req, res) => res.send("Backend is running!"));
+app.use("/auth", authLimiter, authRoutes);
 
+const start = async () => {
+  try {
+    await mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+    console.log("MongoDB connected");
 
-
-
-
-
-const PORT = process.env.PORT || 5001;
-
-const startServer = async () => {
-  await connectDB();
-  app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+    const port = process.env.PORT || 5001;
+    app.listen(port, () => console.log(`Server running on port ${port}`));
+  } catch (err) {
+    console.error("Failed to start server:", err);
+  }
 };
 
-startServer();
+start();

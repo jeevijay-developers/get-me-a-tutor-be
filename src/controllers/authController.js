@@ -1,92 +1,149 @@
-// src/controllers/authController.js
-import Tutor from "../models/Tutor.js";
-import Institute from "../models/Institute.js";
+// controllers/authController.js
+import User from "../models/User.js";
+import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import { generateOTP, hashOTP, verifyOTP } from "../utils/otp.js";
+import { sendEmailOTP } from "../utils/email.js";
+// import { sendPhoneOTP } from "../utils/whatsapp.js"; // not used anymore
 
-const generateToken = (payload) => {
-  return jwt.sign(payload, process.env.JWT_SECRET || "change_this_secret", {
-    expiresIn: process.env.JWT_EXPIRES_IN || "7d"
-  });
-};
+// OTP expire time
+const OTP_EXPIRE_MS = 10 * 60 * 1000; // 10 minutes
 
-// Tutor register
-export const tutorRegister = async (req, res, next) => {
+// JWT settings
+const JWT_EXPIRES = "7d"; // change if you want shorter
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  console.warn("Warning: JWT_SECRET is not set in .env");
+}
+
+// ------------------ SIGNUP ------------------
+export async function signup(req, res) {
   try {
-    const { name, email, phone, password, gender, address } = req.body;
-    if (!email || !password || !name) {
-      return res.status(400).json({ success: false, message: "Name, email and password required" });
+    const { name, email, phone, password, role } = req.body;
+    if (!name || !email || !phone || !password || !role) {
+      return res.status(400).json({ message: "All fields required" });
     }
 
-    const exists = await Tutor.findOne({ email });
-    if (exists) return res.status(400).json({ success: false, message: "Email already exists" });
-
-    const tutor = await Tutor.create({ name, email, phone, password, gender, address });
-    // return token + tutor (omit password)
-    const token = generateToken({ id: tutor._id, role: "tutor" });
-    const t = await Tutor.findById(tutor._id).lean(); // password excluded by default
-    res.status(201).json({ success: true, data: { ...t, token } });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// Tutor login
-export const tutorLogin = async (req, res, next) => {
-  try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ success: false, message: "Email and password required" });
-
-    const tutor = await Tutor.findOne({ email }).select("+password");
-    if (!tutor) return res.status(401).json({ success: false, message: "Invalid credentials" });
-
-    const isMatch = await tutor.matchPassword(password);
-    if (!isMatch) return res.status(401).json({ success: false, message: "Invalid credentials" });
-
-    const token = generateToken({ id: tutor._id, role: "tutor" });
-    // return tutor without password
-    const t = await Tutor.findById(tutor._id).lean();
-    res.json({ success: true, data: { ...t, token } });
-  } catch (err) {
-    next(err);
-  }
-};
-
-// Institute register
-export const instituteRegister = async (req, res, next) => {
-  try {
-    const { name, email, phone, password, address, description } = req.body;
-    if (!email || !password || !name) {
-      return res.status(400).json({ success: false, message: "Name, email and password required" });
+    // check existing by email or phone
+    const exists = await User.findOne({ $or: [{ email }, { phone }] });
+    if (exists) {
+      return res.status(400).json({ message: "Email or phone already registered" });
     }
 
-    const exists = await Institute.findOne({ email });
-    if (exists) return res.status(400).json({ success: false, message: "Email already exists" });
+    // hash password
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    const inst = await Institute.create({ name, email, phone, password, address, description });
-    const token = generateToken({ id: inst._id, role: "institute" });
-    const i = await Institute.findById(inst._id).lean();
-    res.status(201).json({ success: true, data: { ...i, token } });
+    // generate email OTP only
+    const emailOTP = generateOTP();
+    const emailOTPHash = hashOTP(emailOTP);
+    const expiry = Date.now() + OTP_EXPIRE_MS;
+
+    // create user (unverified email). We intentionally do NOT set phoneOTP fields.
+    const user = await User.create({
+      name,
+      email,
+      phone,
+      password: hashedPassword,
+      role,
+      emailOTPHash,
+      emailOTPExpires: expiry
+      // phoneOTPHash and phoneOTPExpires are NOT created here
+    });
+
+    // send email OTP
+    try {
+      await sendEmailOTP(email, emailOTP);
+    } catch (err) {
+      console.error("Email send failed:", err?.message || err);
+      // continue — you can implement resend logic on frontend/backend
+    }
+
+    return res.status(201).json({
+      message: "Signup successful. Please verify your email OTP (check your email).",
+      userId: user._id
+    });
   } catch (err) {
-    next(err);
+    console.error("signup error:", err);
+    return res.status(500).json({ message: "Server error" });
   }
-};
+}
 
-// Institute login
-export const instituteLogin = async (req, res, next) => {
+// ------------------ VERIFY EMAIL ------------------
+export async function verifyEmail(req, res) {
   try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ success: false, message: "Email and password required" });
+    const { email, otp } = req.body;
+    if (!email || !otp) return res.status(400).json({ message: "Email and OTP required" });
 
-    const inst = await Institute.findOne({ email }).select("+password");
-    if (!inst) return res.status(401).json({ success: false, message: "Invalid credentials" });
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-    const isMatch = await inst.matchPassword(password);
-    if (!isMatch) return res.status(401).json({ success: false, message: "Invalid credentials" });
+    if (!user.emailOTPHash || !user.emailOTPExpires)
+      return res.status(400).json({ message: "No pending email OTP" });
 
-    const token = generateToken({ id: inst._id, role: "institute" });
-    const i = await Institute.findById(inst._id).lean();
-    res.json({ success: true, data: { ...i, token } });
+    if (user.emailOTPExpires < Date.now())
+      return res.status(400).json({ message: "Email OTP expired" });
+
+    const ok = verifyOTP(otp, user.emailOTPHash);
+    if (!ok) return res.status(400).json({ message: "Invalid OTP" });
+
+    user.emailVerified = true;
+    user.emailOTPHash = undefined;
+    user.emailOTPExpires = undefined;
+    await user.save();
+
+    return res.json({ message: "Email verified successfully" });
   } catch (err) {
-    next(err);
+    console.error("verifyEmail error:", err);
+    return res.status(500).json({ message: "Server error" });
   }
-};
+}
+
+// ------------------ (optional) VERIFY PHONE stub ------------------
+// If you no longer want phone verification at all, remove this function and the route.
+// For now it's commented out to show how it used to be.
+// export async function verifyPhone(req, res) { ... }
+
+// ------------------ LOGIN ------------------
+export async function login(req, res) {
+  try {
+    const { identifier, password } = req.body;
+    if (!identifier || !password) {
+      return res.status(400).json({ message: "Provide identifier (email or phone) and password" });
+    }
+
+    // find by email or phone
+    const user = await User.findOne({
+      $or: [{ email: identifier }, { phone: identifier }]
+    });
+
+    if (!user) return res.status(401).json({ message: "Invalid credentials" });
+
+    // check password
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
+
+    // ONLY email verification is required now:
+    if (!user.emailVerified) {
+      return res.status(403).json({ message: "Please verify your email before logging in" });
+    }
+
+    // sign JWT
+    const payload = { id: user._id.toString(), role: user.role };
+    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+
+    return res.json({
+      message: "Login successful",
+      token,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role
+      }
+    });
+  } catch (err) {
+    console.error("login error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
