@@ -1,20 +1,18 @@
-// controllers/authController.js
+// src/controllers/authController.js
 import User from "../models/User.js";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
 import { generateOTP, hashOTP, verifyOTP } from "../utils/otp.js";
-import { sendEmailOTP } from "../utils/email.js";
-// import { sendPhoneOTP } from "../utils/whatsapp.js"; // not used anymore
+import { sendEmailOTP, sendPasswordResetEmail } from "../utils/email.js";
+import { generateSecureToken, hashToken } from "../utils/tokens.js";
+import RefreshToken from "../models/RefreshToken.js";
+import PasswordReset from "../models/PasswordReset.js";
 
-// OTP expire time
 const OTP_EXPIRE_MS = 10 * 60 * 1000; // 10 minutes
-
-// JWT settings
-const JWT_EXPIRES = "7d"; // change if you want shorter
+const ACCESS_TOKEN_EXPIRES = "15m";   // short-lived access token
+const REFRESH_EXPIRES_DAYS = 7;       // refresh token lifetime
 const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  console.warn("Warning: JWT_SECRET is not set in .env");
-}
+if (!JWT_SECRET) console.warn("Warning: JWT_SECRET is not set in .env");
 
 // ------------------ SIGNUP ------------------
 export async function signup(req, res) {
@@ -24,21 +22,15 @@ export async function signup(req, res) {
       return res.status(400).json({ message: "All fields required" });
     }
 
-    // check existing by email or phone
     const exists = await User.findOne({ $or: [{ email }, { phone }] });
-    if (exists) {
-      return res.status(400).json({ message: "Email or phone already registered" });
-    }
+    if (exists) return res.status(400).json({ message: "Email or phone already registered" });
 
-    // hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // generate email OTP only
     const emailOTP = generateOTP();
     const emailOTPHash = hashOTP(emailOTP);
     const expiry = Date.now() + OTP_EXPIRE_MS;
 
-    // create user (unverified email). We intentionally do NOT set phoneOTP fields.
     const user = await User.create({
       name,
       email,
@@ -47,16 +39,15 @@ export async function signup(req, res) {
       role,
       emailOTPHash,
       emailOTPExpires: expiry
-      // phoneOTPHash and phoneOTPExpires are NOT created here
     });
 
-    // send email OTP
-    try {
-      await sendEmailOTP(email, emailOTP);
-    } catch (err) {
-      console.error("Email send failed:", err?.message || err);
-      // continue — you can implement resend logic on frontend/backend
+    // DEV helper - prints OTP to server logs when not in production
+    if (process.env.NODE_ENV !== "production") {
+      console.log(`DEV OTP for ${email}: ${emailOTP}`);
     }
+
+    try { await sendEmailOTP(email, emailOTP); }
+    catch (err) { console.error("Email send failed:", err?.message || err); }
 
     return res.status(201).json({
       message: "Signup successful. Please verify your email OTP (check your email).",
@@ -80,8 +71,7 @@ export async function verifyEmail(req, res) {
     if (!user.emailOTPHash || !user.emailOTPExpires)
       return res.status(400).json({ message: "No pending email OTP" });
 
-    if (user.emailOTPExpires < Date.now())
-      return res.status(400).json({ message: "Email OTP expired" });
+    if (user.emailOTPExpires < Date.now()) return res.status(400).json({ message: "Email OTP expired" });
 
     const ok = verifyOTP(otp, user.emailOTPHash);
     if (!ok) return res.status(400).json({ message: "Invalid OTP" });
@@ -98,52 +88,178 @@ export async function verifyEmail(req, res) {
   }
 }
 
-// ------------------ (optional) VERIFY PHONE stub ------------------
-// If you no longer want phone verification at all, remove this function and the route.
-// For now it's commented out to show how it used to be.
-// export async function verifyPhone(req, res) { ... }
+// ------------------ RESEND EMAIL OTP ------------------
+export async function resendEmailOTP(req, res) {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Email required" });
 
-// ------------------ LOGIN ------------------
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
+    if (user.emailVerified) return res.status(400).json({ message: "Email already verified" });
+
+    const otp = generateOTP();
+    user.emailOTPHash = hashOTP(otp);
+    user.emailOTPExpires = Date.now() + OTP_EXPIRE_MS;
+    await user.save();
+
+    if (process.env.NODE_ENV !== "production") console.log(`DEV resend OTP for ${email}: ${otp}`);
+
+    try { await sendEmailOTP(email, otp); }
+    catch (err) { console.error("resendEmailOTP: email send failed", err?.message || err); }
+
+    return res.json({ message: "OTP resent to email (if email exists)." });
+  } catch (err) {
+    console.error("resendEmailOTP error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+// ------------------ LOGIN (issue access + refresh token) ------------------
 export async function login(req, res) {
   try {
     const { identifier, password } = req.body;
-    if (!identifier || !password) {
-      return res.status(400).json({ message: "Provide identifier (email or phone) and password" });
-    }
+    if (!identifier || !password) return res.status(400).json({ message: "Provide identifier and password" });
 
-    // find by email or phone
-    const user = await User.findOne({
-      $or: [{ email: identifier }, { phone: identifier }]
-    });
-
+    const user = await User.findOne({ $or: [{ email: identifier }, { phone: identifier }] });
     if (!user) return res.status(401).json({ message: "Invalid credentials" });
 
-    // check password
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
 
-    // ONLY email verification is required now:
-    if (!user.emailVerified) {
-      return res.status(403).json({ message: "Please verify your email before logging in" });
-    }
+    if (!user.emailVerified) return res.status(403).json({ message: "Please verify your email before logging in" });
 
-    // sign JWT
-    const payload = { id: user._id.toString(), role: user.role };
-    const token = jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES });
+    user.lastLoginAt = new Date();
+    await user.save();
+
+    // access token (short-lived)
+    const accessToken = jwt.sign({ id: user._id.toString(), role: user.role }, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRES });
+
+    // refresh token (raw) -> hashed stored in DB
+    const rawRefresh = generateSecureToken(32);
+    const refreshHash = hashToken(rawRefresh);
+    const expiresAt = new Date(Date.now() + REFRESH_EXPIRES_DAYS * 24 * 60 * 60 * 1000);
+
+    await RefreshToken.create({ user: user._id, tokenHash: refreshHash, expiresAt, revoked: false });
 
     return res.json({
       message: "Login successful",
-      token,
-      user: {
-        id: user._id,
-        name: user.name,
-        email: user.email,
-        phone: user.phone,
-        role: user.role
-      }
+      accessToken,
+      refreshToken: rawRefresh,
+      user: { id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role }
     });
   } catch (err) {
     console.error("login error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+// ------------------ REFRESH (rotate refresh token) ------------------
+export async function refreshToken(req, res) {
+  try {
+    const { refreshToken } = req.body;
+    if (!refreshToken) return res.status(400).json({ message: "Refresh token required" });
+
+    const hashed = hashToken(refreshToken);
+    const stored = await RefreshToken.findOne({ tokenHash: hashed });
+
+    if (!stored || stored.revoked) return res.status(401).json({ message: "Invalid refresh token" });
+    if (stored.expiresAt < Date.now()) return res.status(401).json({ message: "Refresh token expired" });
+
+    // rotate: revoke old and create new
+    const newRaw = generateSecureToken(32);
+    const newHash = hashToken(newRaw);
+    const newExpiresAt = new Date(Date.now() + REFRESH_EXPIRES_DAYS * 24 * 60 * 60 * 1000);
+
+    stored.revoked = true;
+    stored.replacedByHash = newHash;
+    await stored.save();
+
+    await RefreshToken.create({ user: stored.user, tokenHash: newHash, expiresAt: newExpiresAt });
+
+    const user = await User.findById(stored.user);
+    const accessToken = jwt.sign({ id: user._id.toString(), role: user.role }, JWT_SECRET, { expiresIn: ACCESS_TOKEN_EXPIRES });
+
+    return res.json({ accessToken, refreshToken: newRaw });
+  } catch (err) {
+    console.error("refreshToken error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+// ------------------ LOGOUT (revoke refresh token) ------------------
+export async function logout(req, res) {
+  try {
+    const { refreshToken } = req.body;
+    if (!refreshToken) return res.status(400).json({ message: "Refresh token required" });
+
+    const hashed = hashToken(refreshToken);
+    const stored = await RefreshToken.findOne({ tokenHash: hashed });
+    if (stored) {
+      stored.revoked = true;
+      await stored.save();
+    }
+    return res.json({ message: "Logged out" });
+  } catch (err) {
+    console.error("logout error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+// ------------------ FORGOT PASSWORD ------------------
+export async function forgotPassword(req, res) {
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Email required" });
+
+    const user = await User.findOne({ email });
+    // don't leak whether email exists
+    if (!user) return res.status(200).json({ message: "If the email exists, a reset link has been sent." });
+
+    const raw = generateSecureToken(32);
+    const tokenHash = hashToken(raw);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await PasswordReset.create({ user: user._id, tokenHash, expiresAt });
+
+    const resetUrl = `${process.env.FRONTEND_URL || "http://localhost:3000"}/reset-password?token=${raw}&email=${encodeURIComponent(email)}`;
+
+    try { await sendPasswordResetEmail(email, resetUrl); } 
+    catch (err) { console.error("sendPasswordResetEmail failed:", err); }
+
+    return res.json({ message: "If the email exists, a reset link has been sent." });
+  } catch (err) {
+    console.error("forgotPassword error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
+// ------------------ RESET PASSWORD ------------------
+export async function resetPassword(req, res) {
+  try {
+    const { email, token, newPassword } = req.body;
+    if (!email || !token || !newPassword) return res.status(400).json({ message: "Email, token and newPassword required" });
+
+    const user = await User.findOne({ email });
+    if (!user) return res.status(400).json({ message: "Invalid request" });
+
+    const tokenHash = hashToken(token);
+    const pr = await PasswordReset.findOne({ user: user._id, tokenHash, used: false });
+    if (!pr) return res.status(400).json({ message: "Invalid or used token" });
+    if (pr.expiresAt < Date.now()) return res.status(400).json({ message: "Token expired" });
+
+    user.password = await bcrypt.hash(newPassword, 10);
+    await user.save();
+
+    pr.used = true;
+    await pr.save();
+
+    // revoke all existing refresh tokens for this user
+    await RefreshToken.updateMany({ user: user._id }, { $set: { revoked: true } });
+
+    return res.json({ message: "Password reset successful" });
+  } catch (err) {
+    console.error("resetPassword error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 }
