@@ -1,38 +1,100 @@
-// models/TeacherProfile.js
 import mongoose from "mongoose";
 
-const teacherSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, unique: true },
+const teacherSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      unique: true,
+      index: true,
+    },
 
-  // basic
-  bio: String,
-  experienceYears: { type: Number, default: 0 },
-  subjects: [{ type: String, index: true }],  // example: ["Math","Physics"]
-  classes: [{ type: String }],                 // e.g. ["6","7","12"]
-  languages: [{ type: String }],
-  city: { type: String, index: true },
-  expectedSalary: { type: Number },            // per month/hour as needed
-  availability: { type: String },              // e.g. "Weekdays 6-9pm"
+    bio: { type: String, trim: true },
 
-  // uploads / assets
-  resume: {
-    url: String,
-    filename: String,
-    mimeType: String,
-    size: Number
+    experienceYears: {
+      type: Number,
+      default: 0,
+      index: true,
+    },
+
+    subjects: [{
+      type: String,
+      lowercase: true,
+      trim: true,
+    }],
+
+    classes: [{ type: Number }],
+
+    languages: [{
+      type: String,
+      lowercase: true,
+      trim: true,
+    }],
+
+    city: {
+      type: String,
+      lowercase: true,
+      trim: true,
+      index: true,
+    },
+
+    expectedSalary: {
+      min: Number,
+      max: Number,
+    },
+
+    availability: { type: String },
+
+    resume: {
+      url: String,
+      filename: String,
+      mimeType: String,
+      size: Number,
+    },
+
+    photo: {
+      url: String,
+      filename: String,
+    },
+
+    demoVideoUrl: String,
+
+    isPublic: {
+      type: Boolean,
+      default: true,
+    },
+
+    isVerified: {
+      type: Boolean,
+      default: false,
+    },
+
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+
+    tags: [{
+      type: String,
+      lowercase: true,
+      trim: true,
+    }],
   },
-  photo: { url: String, filename: String },
-  demoVideoUrl: String,
+  { timestamps: true }
+);
 
-  // visibility
-  isPublic: { type: Boolean, default: true },
+// TEXT SEARCH
+teacherSchema.index({
+  bio: "text",
+  subjects: "text",
+  tags: "text",
+});
 
-  // tags for fast search
-  tags: [{ type: String, index: true }],
-
-}, { timestamps: true });
-
-// text index for search
-teacherSchema.index({ bio: "text", subjects: "text", tags: "text" });
+// FILTER SEARCH
+teacherSchema.index({ city: 1 });
+teacherSchema.index({ experienceYears: 1 });
+teacherSchema.index({ "expectedSalary.min": 1 });
+teacherSchema.index({ "expectedSalary.max": 1 });
 
 export default mongoose.model("TeacherProfile", teacherSchema);

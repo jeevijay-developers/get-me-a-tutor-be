@@ -1,15 +1,14 @@
 
-
 import "dotenv/config";
-
-
 import express from "express";
 import mongoose from "mongoose";
 import authRoutes from "./src/routes/authRoutes.js";
 import rateLimit from "express-rate-limit";
 import profileRoutes from "./src/routes/profileRoutes.js";
 import institutionRoutes from "./src/routes/institution.routes.js";
-
+import searchRoutes from "./src/routes/search.routes.js";
+import jobRoutes from "./src/routes/jobRoutes.js";
+import jobApplicationRoutes from "./src/routes/jobApplicationRoutes.js";
 const app = express();
 app.use(express.json());
 
@@ -26,9 +25,13 @@ app.get("/", (req, res) => {
 app.use("/auth", authLimiter, authRoutes);
 app.use("/profile", profileRoutes);
 app.use("/api/institution", institutionRoutes);
+app.use("/search", searchRoutes);
+app.use("/jobs", jobRoutes);
+app.use("/applications", jobApplicationRoutes);
 const start = async () => {
   try {
-    await mongoose.connect(process.env.MONGODB_URI, { useNewUrlParser: true, useUnifiedTopology: true });
+   await mongoose.connect(process.env.MONGODB_URI);
+
     console.log("MongoDB connected");
 
     const port = process.env.PORT || 5001;

@@ -11,13 +11,19 @@ import PasswordReset from "../models/PasswordReset.js";
 const OTP_EXPIRE_MS = 10 * 60 * 1000; // 10 minutes
 const ACCESS_TOKEN_EXPIRES = "15m";   // short-lived access token
 const REFRESH_EXPIRES_DAYS = 7;       // refresh token lifetime
-const JWT_SECRET = process.env.JWT_SECRET;
+const JWT_SECRET = process.env.JWT_SECRET || "dev_fallback_secret";
+
 if (!JWT_SECRET) console.warn("Warning: JWT_SECRET is not set in .env");
 
 // ------------------ SIGNUP ------------------
 export async function signup(req, res) {
   try {
     const { name, email, phone, password, role } = req.body;
+      const allowedRoles = ["student", "tutor", "parent", "institute"];
+      if (!allowedRoles.includes(role)) {
+      return res.status(400).json({ message: "Invalid role" });
+         }
+
     if (!name || !email || !phone || !password || !role) {
       return res.status(400).json({ message: "All fields required" });
     }

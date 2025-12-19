@@ -1,41 +1,38 @@
-// src/middlewares/auth.js
-
 import jwt from "jsonwebtoken";
 import User from "../models/User.js";
 
-// -------------------- AUTHENTICATE USER --------------------
+if (!process.env.JWT_SECRET) {
+  throw new Error("JWT_SECRET is not defined");
+}
+
 export default async function auth(req, res, next) {
   try {
     const header = req.headers.authorization;
     if (!header || !header.startsWith("Bearer ")) {
-      return res.status(401).json({ message: "No token provided" });
+      return res.status(401).json({ message: "Unauthorized" });
     }
 
     const token = header.split(" ")[1];
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
 
-    if (!decoded?.id) {
-      return res.status(401).json({ message: "Invalid token" });
-    }
-
     const user = await User.findById(decoded.id)
       .select("-password -emailOTPHash -phoneOTPHash");
 
     if (!user) {
-      return res.status(401).json({ message: "User not found" });
+      return res.status(401).json({ message: "Unauthorized" });
     }
 
-    // attach user to request
+    if (!user.emailVerified) {
+      return res.status(403).json({ message: "Email not verified" });
+    }
+
     req.user = user;
     next();
   } catch (err) {
-    console.error("auth middleware error:", err?.message || err);
     return res.status(401).json({ message: "Unauthorized" });
   }
 }
 
-
-// -------------------- ROLE CHECK MIDDLEWARE --------------------
 export function allowRoles(...roles) {
   return (req, res, next) => {
     if (!req.user || !roles.includes(req.user.role)) {
