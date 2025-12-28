@@ -14,7 +14,14 @@ export async function createJob(req, res) {
 
     const job = await Job.create({
       institution: institution._id,
-      ...req.body,
+      title: req.body.title,
+      description: req.body.description,
+      subjects: req.body.subjects,
+      salary: req.body.salary,
+      location: req.body.location,
+      jobType: req.body.jobType,
+      deadline: req.body.deadline,
+      status: "active",
     });
 
     return res.status(201).json({
@@ -64,7 +71,6 @@ export async function getMyJobs(req, res) {
     return res.status(500).json({ success: false, message: err.message });
   }
 }
-
 
 export async function updateJob(req, res) {
   try {
@@ -120,4 +126,3 @@ export async function closeJob(req, res) {
     return res.status(500).json({ success: false, message: err.message });
   }
 }
-

@@ -2,7 +2,8 @@
 
 import express from "express";
 import auth from "../middleware/auth.js";
-import { allowRoles } from "../middleware/auth.js";
+import { allowRoles } from "../middleware/role.js";
+
 
 import {
   createInstitutionProfile,

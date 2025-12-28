@@ -1,6 +1,7 @@
 // src/routes/profileRoutes.js
 import express from "express";
-import auth, { allowRoles } from "../middleware/auth.js";
+import auth from "../middleware/auth.js";
+import { allowRoles } from "../middleware/role.js";
 import { upsertTeacherProfile, getTeacherProfile } from "../controllers/teacherProfileController.js";
 import { getMyParentProfile } from "../controllers/parentProfileController.js";
 import {
