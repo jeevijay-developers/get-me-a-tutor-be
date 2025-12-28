@@ -31,6 +31,11 @@ const jobApplicationSchema = new mongoose.Schema(
     coverLetter: {
       type: String,
     },
+     //  CONTACT REVEAL SYSTEM
+    // contactRevealed: {
+    //   type: Boolean,
+    //   default: false,
+    // },
   },
   { timestamps: true }
 );

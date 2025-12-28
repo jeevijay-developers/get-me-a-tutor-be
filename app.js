@@ -2,6 +2,7 @@
 import "dotenv/config";
 import express from "express";
 import mongoose from "mongoose";
+import cors from "cors";
 import authRoutes from "./src/routes/authRoutes.js";
 import rateLimit from "express-rate-limit";
 import profileRoutes from "./src/routes/profileRoutes.js";
@@ -10,6 +11,11 @@ import searchRoutes from "./src/routes/search.routes.js";
 import jobRoutes from "./src/routes/jobRoutes.js";
 import jobApplicationRoutes from "./src/routes/jobApplicationRoutes.js";
 const app = express();
+app.use(cors({
+  origin: "http://localhost:5174",
+  credentials: true
+}));
+
 app.use(express.json());
 
 // basic rate limiter for auth endpoints

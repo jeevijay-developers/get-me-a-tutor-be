@@ -86,14 +86,26 @@ export async function verifyEmail(req, res) {
     user.emailOTPHash = undefined;
     user.emailOTPExpires = undefined;
     await user.save();
-
-    return res.json({ message: "Email verified successfully" });
+    const accessToken = jwt.sign(
+      { id: user._id.toString(), role: user.role },
+      JWT_SECRET,
+      { expiresIn: ACCESS_TOKEN_EXPIRES }
+    );
+    return res.json({
+      message: "Email verified successfully",
+      accessToken,
+      user: {
+        id: user._id,
+        role: user.role,
+        email: user.email,
+        phone: user.phone,
+      },
+    });
   } catch (err) {
     console.error("verifyEmail error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 }
-
 // ------------------ RESEND EMAIL OTP ------------------
 export async function resendEmailOTP(req, res) {
   try {
