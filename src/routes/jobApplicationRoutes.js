@@ -3,6 +3,7 @@ import auth, { allowRoles } from "../middleware/auth.js";
 import {
   applyToJob,
   getMyApplications,
+  getRecentApplications,
   getJobApplications,
   updateApplicationStatus,
 } from "../controllers/jobApplicationController.js";
@@ -19,15 +20,22 @@ router.get("/my", auth, allowRoles("tutor"), getMyApplications);
 router.get(
   "/job/:jobId",
   auth,
-  allowRoles("institute"),
+  allowRoles("institute","parent"),
   getJobApplications
+);
+
+router.get(
+  "/institute/recent",
+  auth,
+  allowRoles("institute","parent"),
+  getRecentApplications
 );
 
 // Institution updates application status
 router.patch(
   "/:applicationId/status",
   auth,
-  allowRoles("institute"),
+  allowRoles("institute","parent"),
   updateApplicationStatus
 );
 

@@ -74,7 +74,22 @@ const teacherSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
-
+    credits: {
+      type: Number,
+      default: 500,
+    },
+    jobsApplied: {
+      type: Number,
+      default: 0,
+    },
+    examsPassed: {
+      type: Number,
+      default: 0,
+    },
+    rating:{
+      type: Number,
+      default: 0,
+    },
     tags: [{
       type: String,
       lowercase: true,

@@ -7,9 +7,10 @@ import { sendEmailOTP, sendPasswordResetEmail } from "../utils/email.js";
 import { generateSecureToken, hashToken } from "../utils/tokens.js";
 import RefreshToken from "../models/RefreshToken.js";
 import PasswordReset from "../models/PasswordReset.js";
-
+import Institution from "../models/Institution.js";
+import TeacherProfile from "../models/TeacherProfile.js";
 const OTP_EXPIRE_MS = 10 * 60 * 1000; // 10 minutes
-const ACCESS_TOKEN_EXPIRES = "15m";   // short-lived access token
+const ACCESS_TOKEN_EXPIRES = "43200m";   // short-lived access token
 const REFRESH_EXPIRES_DAYS = 7;       // refresh token lifetime
 const JWT_SECRET = process.env.JWT_SECRET || "dev_fallback_secret";
 
@@ -86,8 +87,22 @@ export async function verifyEmail(req, res) {
     user.emailOTPHash = undefined;
     user.emailOTPExpires = undefined;
     await user.save();
-
-    return res.json({ message: "Email verified successfully" });
+    const accessToken = jwt.sign(
+      { id: user._id.toString(), role: user.role },
+      JWT_SECRET,
+      { expiresIn: ACCESS_TOKEN_EXPIRES }
+    );
+    return res.json({
+      message: "Email verified successfully",
+      accessToken,
+      user: {
+        id: user._id,
+        role: user.role,
+        email: user.email,
+        phone: user.phone,
+        name: user.name,
+      },
+    });
   } catch (err) {
     console.error("verifyEmail error:", err);
     return res.status(500).json({ message: "Server error" });
@@ -152,10 +167,39 @@ export async function login(req, res) {
       message: "Login successful",
       accessToken,
       refreshToken: rawRefresh,
-      user: { id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role }
+      user: { id: user._id, name: user.name, email: user.email, phone: user.phone, role: user.role, hasInstituteProfile: user.hasInstituteProfile, hasTeacherProfile: user.hasTeacherProfile },
     });
   } catch (err) {
     console.error("login error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+// ------------------ DELETE ACCOUNT ------------------
+export async function deleteAccount(req, res) {
+  try {
+    const userId = req.user._id;
+await User.findByIdAndUpdate(req.user._id, {
+      hasInstituteProfile: false,
+      hasTeacherProfile: false,
+    });
+    // 1️⃣ Delete institution profile IF EXISTS (no role check)
+    await Institution.findOneAndDelete({ owner: userId });
+await TeacherProfile.findOneAndDelete({ userId });
+    // 2️⃣ Revoke all refresh tokens
+    await RefreshToken.updateMany(
+      { user: userId },
+      { $set: { revoked: true } }
+    );
+
+    // 3️⃣ Delete user account
+    await User.findByIdAndDelete(userId);
+
+    return res.json({
+      success: true,
+      message: "Account deleted successfully",
+    });
+  } catch (error) {
+    console.error("deleteAccount error:", error);
     return res.status(500).json({ message: "Server error" });
   }
 }
@@ -268,4 +312,5 @@ export async function resetPassword(req, res) {
     console.error("resetPassword error:", err);
     return res.status(500).json({ message: "Server error" });
   }
+  
 }

@@ -3,9 +3,10 @@
 import express from "express";
 import auth from "../middleware/auth.js";
 import { allowRoles } from "../middleware/auth.js";
-
+import upload from "../middleware/upload.js";
 import {
   createInstitutionProfile,
+  getMyInstitutionProfile,
   getInstitutionProfile,
   updateInstitutionProfile,
   deleteInstitutionProfile,
@@ -21,6 +22,10 @@ const router = express.Router();
 router.post(
   "/",
   auth,
+  upload.fields([
+    { name: "logo", maxCount: 1 },
+    { name: "galleryImages", maxCount: 10 },
+  ]),
   allowRoles("institute","institution"),
   createInstitutionProfile
 );
@@ -30,6 +35,14 @@ router.post(
  * @desc Get Institution Profile (public)
  * @access Public
  */
+
+router.get(
+  "/me",
+  auth,
+  allowRoles("institute", "institution"),
+  getMyInstitutionProfile
+);
+
 router.get("/:id", getInstitutionProfile);
 
 /**
@@ -40,6 +53,10 @@ router.get("/:id", getInstitutionProfile);
 router.put(
   "/:id",
   auth,
+  upload.fields([
+    { name: "logo", maxCount: 1 },
+    { name: "galleryImages", maxCount: 10 },
+  ]),
   allowRoles("institute","institution"),
   updateInstitutionProfile
 );

@@ -1,6 +1,6 @@
 import TeacherProfile from "../models/TeacherProfile.js";
 
-export async function searchTeachers(req, res) {
+export async function searchTeachers(req, res) { //institution, student, parent
   try {
     const {
       city,
@@ -14,14 +14,15 @@ export async function searchTeachers(req, res) {
     } = req.query;
 
     const filters = [];
+    filters.push({ isPublic: true });
 
     if (city) {
-      filters.push({ city: city.toLowerCase() });
+      filters.push({ city: city });
     }
 
     if (subject) {
       filters.push({
-        subjects: { $in: [subject.toLowerCase()] },
+        subjects: { $in: [subject] },
       });
     }
 
@@ -51,7 +52,7 @@ export async function searchTeachers(req, res) {
     if (sort === "latest") sortOption = { createdAt: -1 };
 
     const teachers = await TeacherProfile.find(query)
-      .select("bio city subjects experienceYears expectedSalary isPublic")
+      .select("userId bio city subjects experienceYears expectedSalary isPublic")
       .sort(sortOption)
       .skip((page - 1) * limit)
       .limit(Number(limit));

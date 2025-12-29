@@ -23,7 +23,18 @@ const userSchema = new mongoose.Schema(
       unique: true,
       trim: true,
     },
-
+hasInstituteProfile: {
+    type: Boolean,
+    default: false,
+  },
+  hasTeacherProfile: {
+    type: Boolean,
+    default: false,
+  },
+  hasParentProfile: {
+    type: Boolean,
+    default: false,
+  },
     password: {
   type: String,
   required: true,

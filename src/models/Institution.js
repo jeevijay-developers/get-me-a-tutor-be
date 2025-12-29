@@ -68,6 +68,18 @@ const institutionSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+    credits: {
+      type: Number,
+      default: 500,
+    },
+    tutorsHired: {
+      type: Number,
+      default: 0,
+    },
+    jobsPosted: {
+      type: Number,
+      default: 0,
+    },
   },
   { timestamps: true }
 );

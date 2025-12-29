@@ -9,9 +9,9 @@ import institutionRoutes from "./src/routes/institution.routes.js";
 import searchRoutes from "./src/routes/search.routes.js";
 import jobRoutes from "./src/routes/jobRoutes.js";
 import jobApplicationRoutes from "./src/routes/jobApplicationRoutes.js";
+import parentRoutes from "./src/routes/parentRoutes.js";
 const app = express();
 app.use(express.json());
-
 // basic rate limiter for auth endpoints
 const authLimiter = rateLimit({
   windowMs: 60 * 1000, // 1 minute
@@ -28,6 +28,7 @@ app.use("/api/institution", institutionRoutes);
 app.use("/search", searchRoutes);
 app.use("/jobs", jobRoutes);
 app.use("/applications", jobApplicationRoutes);
+app.use("/api/parent",parentRoutes);
 const start = async () => {
   try {
    await mongoose.connect(process.env.MONGODB_URI);

@@ -1,11 +1,21 @@
 import mongoose from "mongoose";
-
 const jobSchema = new mongoose.Schema(
   {
+    postedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    postedByRole: {
+      type: String,
+      enum: ["institute", "parent"],
+      required: true,
+    },
     institution: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Institution",
-      required: true,
+      required: null,
     },
 
     title: {

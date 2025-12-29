@@ -1,5 +1,4 @@
 import mongoose from "mongoose";
-
 const jobApplicationSchema = new mongoose.Schema(
   {
     job: {
@@ -11,7 +10,7 @@ const jobApplicationSchema = new mongoose.Schema(
 
     tutor: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
+      ref: "TeacherProfile",
       required: true,
       index: true,
     },
@@ -19,7 +18,7 @@ const jobApplicationSchema = new mongoose.Schema(
     institution: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Institution",
-      required: true,
+      required: null,
     },
 
     status: {
@@ -38,4 +37,5 @@ const jobApplicationSchema = new mongoose.Schema(
 // prevent duplicate applications
 jobApplicationSchema.index({ job: 1, tutor: 1 }, { unique: true });
 
-export default mongoose.model("JobApplication", jobApplicationSchema);
+export default mongoose.models.JobApplication ||
+  mongoose.model("JobApplication", jobApplicationSchema);
