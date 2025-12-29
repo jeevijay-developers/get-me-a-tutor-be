@@ -7,7 +7,7 @@ const allowedOrigins = [
 
 const corsOptions = {
   origin: function (origin, callback) {
-    if (!origin) return callback(null, true); // Postman / curl
+    if (!origin) return callback(null, true);
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
@@ -20,4 +20,3 @@ const corsOptions = {
 };
   
 export default corsOptions;
-// VERY IMPORTANT (preflight fix)

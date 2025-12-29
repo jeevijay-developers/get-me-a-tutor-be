@@ -24,6 +24,16 @@ export async function createJob(req, res) {
       status: "active",
     });
 
+    if (institution.credits < 5) {
+      return res.status(400).json({
+        success: false,
+        message: "Not enough credits to post job",
+      });
+    }
+
+    institution.credits -= 5;
+    await institution.save();
+
     return res.status(201).json({
       success: true,
       job,
