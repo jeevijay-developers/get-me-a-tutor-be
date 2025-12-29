@@ -22,3 +22,21 @@ export async function sendEmailOTP(to, otp) {
   });
   return info;
 }
+
+
+
+export async function sendPasswordResetEmail(to, resetUrl) {
+  const mailOptions = {
+    from: process.env.EMAIL_FROM || process.env.EMAIL_USER,
+    to,
+    subject: "Reset your password",
+    html: `
+      <p>You requested a password reset.</p>
+      <p>Click the link below to reset your password:</p>
+      <p><a href="${resetUrl}">${resetUrl}</a></p>
+      <p>This link will expire in 1 hour.</p>
+      <p>If you did not request this, simply ignore this email.</p>
+    `
+  };
+  return transporter.sendMail(mailOptions);
+}
