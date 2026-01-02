@@ -85,6 +85,34 @@ export async function getJobApplications(req, res) {
   }
 }
 
+// ---------------- GET RECEIVED APPLICATIONS (Institution) ----------------
+export async function getReceivedApplications(req, res) {
+  try {
+    const institution = await Institution.findOne({
+      owner: req.user._id,
+    });
+
+    if (!institution) {
+      return res.status(403).json({ message: "Unauthorized" });
+    }
+
+    const applications = await JobApplication.find({
+      institution: institution._id,
+    })
+      .populate("job", "title")
+      .populate("tutor", "name email phone")
+      .sort({ createdAt: -1 });
+
+    return res.json({
+      success: true,
+      applications,
+    });
+  } catch (err) {
+    console.error("getReceivedApplications error:", err);
+    return res.status(500).json({ message: "Server error" });
+  }
+}
+
 // ---------------- UPDATE APPLICATION STATUS ----------------
 export async function updateApplicationStatus(req, res) {
   try {

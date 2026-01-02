@@ -1,6 +1,7 @@
 import express from "express";
 import auth from "../middleware/auth.js";
 import { allowRoles } from "../middleware/role.js";
+import { getJobById } from "../controllers/jobController.js";
 import {
   createJob,
   getAllJobs,
@@ -19,6 +20,9 @@ router.get("/", getAllJobs);
 
 // My jobs (institution)
 router.get("/my", auth, allowRoles("institute"), getMyJobs);
+
+// Get job by ID
+router.get("/:id", getJobById);
 
 // Update job
 router.put("/:id", auth, allowRoles("institute"), updateJob);

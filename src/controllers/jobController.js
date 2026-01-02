@@ -61,6 +61,34 @@ export async function getAllJobs(req, res) {
   }
 }
 
+
+
+export const getJobById = async (req, res) => {
+  try {
+    // The frontend sends the ID as a route parameter
+    const job = await Job.findById(req.params.id);
+    
+    if (!job) {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+    
+    res.status(200).json({
+  success: true,
+  job,
+});
+
+  } catch (error) {
+    console.error('Error fetching job:', error);
+    
+    // Handle invalid MongoDB ObjectId format
+    if (error.kind === 'ObjectId') {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+    
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 export async function getMyJobs(req, res) {
   try {
     const institution = await Institution.findOne({ owner: req.user._id });
