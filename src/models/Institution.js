@@ -73,6 +73,11 @@ const institutionSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+     //  CREDIT WALLET
+    // credits: {
+    //   type: Number,
+    //   default: 0,
+    // },
   },
   { timestamps: true }
 );

@@ -99,3 +99,29 @@ export const deleteInstitutionProfile = async (req, res) => {
   }
 };
 
+// GET my institution profile (by logged-in user)
+export const getMyInstitutionProfile = async (req, res) => {
+  try {
+    const institution = await Institution.findOne({
+      owner: req.user._id,
+    });
+
+    if (!institution) {
+      return res.status(404).json({
+        success: false,
+        message: "Institution profile not found",
+      });
+    }
+
+    res.json({
+      success: true,
+      institution,
+    });
+  } catch (error) {
+    console.error("getMyInstitutionProfile error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+};

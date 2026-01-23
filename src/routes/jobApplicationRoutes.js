@@ -42,23 +42,33 @@ const router = express.Router();
 // Tutor applies to job
 router.post("/apply", auth, allowRoles("tutor"), applyToJob);
 
-// Tutor views own applications
-router.get("/my", auth, allowRoles("tutor"), getMyApplications);
+/**
+ * Tutor views own applications
+ */
+router.get(
+  "/my",
+  auth,
+  allowRoles("tutor"),
+  getMyApplications
+);
 
 
 // Institution views applications for a job
 router.get(
   "/job/:jobId",
   auth,
-  allowRoles("institute"),
+  allowRoles("institute", "parent"),
   getJobApplications
 );
 
-// Institution updates application status
+/**
+ * Job owner updates application status
+ * Allowed: institute, parent
+ */
 router.patch(
   "/:applicationId/status",
   auth,
-  allowRoles("institute"),
+  allowRoles("institute", "parent"),
   updateApplicationStatus
 );
 

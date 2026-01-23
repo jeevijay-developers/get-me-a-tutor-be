@@ -2,10 +2,22 @@ import mongoose from "mongoose";
 
 const jobSchema = new mongoose.Schema(
   {
+    postedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+
+    postedByRole: {
+      type: String,
+      enum: ["institute", "parent"],
+      required: true,
+    },
+
     institution: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Institution",
-      required: true,
+      default: null, // only for institute jobs
     },
 
     title: {
@@ -16,14 +28,13 @@ const jobSchema = new mongoose.Schema(
 
     description: {
       type: String,
+      trim: true,
     },
 
-    subjects: [
-      {
-        type: String,
-        index: true,
-      },
-    ],
+    subjects: {
+      type: [String],
+      required: true,
+    },
 
     classRange: {
       type: String, // "6-10", "11-12"
@@ -31,11 +42,13 @@ const jobSchema = new mongoose.Schema(
 
     salary: {
       type: Number,
+      required: true,
+      min: [10000, "Salary must be at least ₹10,000"],
     },
 
     location: {
       type: String,
-      index: true,
+      required: true,
     },
 
     jobType: {
@@ -51,12 +64,16 @@ const jobSchema = new mongoose.Schema(
     status: {
       type: String,
       enum: ["draft", "active", "closed"],
-      default: "draft",
+      default: "active",
     },
   },
   { timestamps: true }
 );
 
-
+/* ✅ Indexes (ONLY HERE — no inline indexes) */
+jobSchema.index({ location: 1 });
+jobSchema.index({ subjects: 1 });
+jobSchema.index({ salary: 1 });
+jobSchema.index({ postedByRole: 1 });
 
 export default mongoose.model("Job", jobSchema);

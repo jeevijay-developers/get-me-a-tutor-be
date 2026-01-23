@@ -3,6 +3,7 @@ import process from "process";
 import express from "express";
 import cors from "cors";
 import mongoose from "mongoose";
+import cors from "cors";
 import authRoutes from "./src/routes/authRoutes.js";
 import rateLimit from "express-rate-limit";
 import profileRoutes from "./src/routes/profileRoutes.js";

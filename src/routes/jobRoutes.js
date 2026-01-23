@@ -12,14 +12,33 @@ import {
 
 const router = express.Router();
 
-// Create job (institution)
-router.post("/", auth, allowRoles("institute"), createJob);
+/**
+ * Create job
+ * Allowed: institute, parent
+ */
+router.post(
+  "/",
+  auth,
+  allowRoles("institute", "parent"),
+  createJob
+);
 
-// Public job list
-router.get("/", getAllJobs);
+/**
+ * Public job feed
+ * Allowed: everyone
+ */
+router.get("/alljobs", getAllJobs);
 
-// My jobs (institution)
-router.get("/my", auth, allowRoles("institute"), getMyJobs);
+/**
+ * My jobs
+ * Allowed: institute, parent
+ */
+router.get(
+  "/my",
+  auth,
+  allowRoles("institute", "parent"),
+  getMyJobs
+);
 
 // Get job by ID
 router.get("/:id", getJobById);
@@ -27,7 +46,15 @@ router.get("/:id", getJobById);
 // Update job
 router.put("/:id", auth, allowRoles("institute"), updateJob);
 
-// Close job
-router.patch("/:id/close", auth, allowRoles("institute"), closeJob);
+/**
+ * Close job
+ * Allowed: owner (institute/parent)
+ */
+router.patch(
+  "/:id/close",
+  auth,
+  allowRoles("institute", "parent"),
+  closeJob
+);
 
 export default router;
