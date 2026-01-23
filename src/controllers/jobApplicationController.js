@@ -7,71 +7,68 @@ import mongoose from "mongoose";
 // ---------------- APPLY TO JOB ----------------
 
 export async function applyToJob(req, res) {
-  const session = await mongoose.startSession();
-
   try {
-    await session.startTransaction();
-
     const { jobId, message } = req.body;
 
+    // 1️⃣ Validate job exists and is active
     const job = await Job.findById(jobId);
     if (!job || job.status !== "active") {
       return res.status(404).json({ message: "Job not available" });
     }
 
+    // 2️⃣ Atomically deduct credit using findOneAndUpdate to prevent race conditions
     const user = await User.findOneAndUpdate(
       { _id: req.user._id, credits: { $gte: 1 } },
       { $inc: { credits: -1 } },
-      { new: true, session }
+      { new: true } // Return updated document
     );
 
     if (!user) {
-      throw new Error("INSUFFICIENT_CREDITS");
+      return res.status(402).json({ message: "Insufficient credits" });
     }
 
-    const application = await JobApplication.create(
-      [{
+    // 3️⃣ Create application - wrap in try-catch to handle potential duplicate key errors
+    try {
+      const application = await JobApplication.create({
         job: job._id,
         tutor: req.user._id,
         jobOwner: job.postedBy,
         jobOwnerRole: job.postedByRole,
         message,
-      }],
-      { session }
-    );
+      });
 
-    await Transaction.create(
-      [{
+      // 4️⃣ Log transaction after successful application creation
+      await Transaction.create({
         user: req.user._id,
         type: "CREDIT_DEBIT",
         credits: -1,
         reason: "JOB_APPLY",
         balanceAfter: user.credits,
-      }],
-      { session }
-    );
-
-    await session.commitTransaction();
-
-    return res.status(201).json({
-      success: true,
-      application: application[0],
-    });
-
-  } catch (err) {
-    await session.abortTransaction();
-    if (err.message === "INSUFFICIENT_CREDITS") {
-      return res.status(402).json({ message: "Insufficient credits" });
-    }
-    if (err.code === 11000) {
-      return res.status(400).json({
-        message: "Already applied to this job",
       });
+
+      return res.status(201).json({
+        success: true,
+        application,
+      });
+    } catch (createErr) {
+      // If application creation failed, refund the deducted credit
+      await User.findByIdAndUpdate(
+        req.user._id,
+        { $inc: { credits: 1 } } // Refund the credit
+      );
+
+      // Handle duplicate key error specifically
+      if (createErr.code === 11000) {
+        return res.status(400).json({
+          message: "Already applied to this job",
+        });
+      }
+
+      throw createErr; // Re-throw other errors
     }
+  } catch (err) {
     console.error("applyToJob error:", err);
     return res.status(500).json({ message: "Server error" });
-  } finally {
-    session.endSession();
   }
 }
 

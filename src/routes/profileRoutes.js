@@ -79,6 +79,11 @@ router.get(
 );
 
 router.post("/teacher", auth, allowRoles("tutor"), upsertTeacherProfile);
+router.get("/teacher/me", auth, (req, res) => {
+  // Redirect to /teacher/:userId using the authenticated user's ID
+  req.params.userId = req.user?.id || req.user?._id?.toString();
+  return getTeacherProfile(req, res);
+});
 router.get("/teacher/:userId", auth, getTeacherProfile);
 
 

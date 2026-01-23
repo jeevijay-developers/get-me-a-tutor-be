@@ -13,7 +13,7 @@ export async function createJob(req, res) {
   try {
     const { role, _id: userId } = req.user;
 
-    // ❌ Block tutors & students
+    // ❌ Block invalid roles
     if (!["institute", "parent"].includes(role)) {
       return res.status(403).json({
         success: false,
@@ -21,91 +21,73 @@ export async function createJob(req, res) {
       });
     }
 
-    const session = await mongoose.startSession();
+    let institutionId = null;
+    let updatedInstitution = null;
 
-    try {
-      await session.startTransaction();
-
-      let institutionId = null;
-
-      // If institute → institution must exist
-      if (role === "institute") {
-        const institution = await Institution.findOne({ owner: userId });
-        if (!institution) {
-          return res.status(400).json({
-            success: false,
-            message: "Create institution profile first",
-          });
-        }
-
-        // Check if institute has enough credits
-        if (institution.credits < 1) {
-          return res.status(402).json({
-            success: false,
-            message: "Not enough credits to post job",
-          });
-        }
-
-        institutionId = institution._id;
-
-        // Deduct credit atomically
-        const updatedInstitution = await Institution.findOneAndUpdate(
-          { _id: institution._id, credits: { $gte: 1 } },
-          { $inc: { credits: -1 } },
-          { new: true, session }
-        );
-
-        if (!updatedInstitution) {
-          throw new Error("INSUFFICIENT_CREDITS");
-        }
-
-        // Create transaction record
-        await Transaction.create([{
-          user: userId,
-          type: "CREDIT_DEBIT",
-          credits: -1,
-          reason: "JOB_POST",
-          balanceAfter: updatedInstitution.credits,
-        }], { session });
-      }
-
-      // Salary validation
-      if (req.body.salary && req.body.salary < 10000) {
+    // ===============================
+    // INSTITUTE CREDIT DEDUCTION
+    // ===============================
+    if (role === "institute") {
+      const institution = await Institution.findOne({ owner: userId });
+      if (!institution) {
         return res.status(400).json({
           success: false,
-          message: "Minimum salary must be 10000",
+          message: "Create institution profile first",
         });
       }
 
-      const job = await Job.create([{
-        institution: institutionId,
-        postedBy: userId,
-        postedByRole: role,
-        title: req.body.title,
-        description: req.body.description,
-        subjects: req.body.subjects,
-        salary: req.body.salary,
-        location: req.body.location,
-        jobType: req.body.jobType,
-        deadline: req.body.deadline,
-        status: "active",
-      }], { session });
+      // 🔒 ATOMIC CREDIT DEDUCTION
+      updatedInstitution = await Institution.findOneAndUpdate(
+        { _id: institution._id, credits: { $gte: 1 } },
+        { $inc: { credits: -1 } },
+        { new: true }
+      );
 
-      await session.commitTransaction();
-
-      return res.status(201).json({
-        success: true,
-        job: job[0],
-      });
-    } catch (err) {
-      await session.abortTransaction();
-      if (err.message === "INSUFFICIENT_CREDITS") {
-        return res.status(402).json({ message: "Insufficient credits" });
+      if (!updatedInstitution) {
+        return res.status(402).json({
+          success: false,
+          message: "Insufficient credits to post job",
+        });
       }
-      throw err;
-    } finally {
-      session.endSession();
+
+      institutionId = updatedInstitution._id;
     }
+
+    // ===============================
+    // CREATE JOB
+    // ===============================
+    const job = await Job.create({
+      institution: institutionId,
+      postedBy: userId,
+      postedByRole: role,
+      title: req.body.title,
+      description: req.body.description,
+      subjects: req.body.subjects,
+      salary: req.body.salary,
+      location: req.body.location,
+      jobType: req.body.jobType,
+      deadline: req.body.deadline,
+      status: "active",
+    });
+
+    // ===============================
+    // LOG TRANSACTION
+    // ===============================
+    if (role === "institute") {
+      await Transaction.create({
+        user: userId,
+        type: "CREDIT_DEBIT",
+        credits: -1,
+        reason: "JOB_POST",
+        balanceAfter: updatedInstitution.credits,
+      });
+    }
+
+    return res.status(201).json({
+      success: true,
+      job,
+    });
+
   } catch (err) {
     console.error("createJob error:", err);
     return res.status(500).json({
