@@ -1,6 +1,7 @@
-
 import "dotenv/config";
+import process from "process";
 import express from "express";
+import cors from "cors";
 import mongoose from "mongoose";
 import cors from "cors";
 import authRoutes from "./src/routes/authRoutes.js";
@@ -11,18 +12,25 @@ import searchRoutes from "./src/routes/search.routes.js";
 import jobRoutes from "./src/routes/jobRoutes.js";
 import jobApplicationRoutes from "./src/routes/jobApplicationRoutes.js";
 const app = express();
-app.use(cors({
-  origin: "http://localhost:5174",
-  credentials: true
-}));
 
+// CORS MUST come FIRST before routes
+app.use(
+  cors({
+    origin: ["http://localhost:8080", "http://localhost:5173"],
+    credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
+// Then add other middleware
 app.use(express.json());
 
 // basic rate limiter for auth endpoints
 const authLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
+  windowMs: 60 * 100, // 1 minute
   max: 10,
-  message: { message: "Too many requests, try again later." }
+  message: { message: "Too many requests, try again later." },
 });
 app.get("/", (req, res) => {
   res.send("Backend is running 🚀");
@@ -36,7 +44,7 @@ app.use("/jobs", jobRoutes);
 app.use("/applications", jobApplicationRoutes);
 const start = async () => {
   try {
-   await mongoose.connect(process.env.MONGODB_URI);
+    await mongoose.connect(process.env.MONGODB_URI);
 
     console.log("MongoDB connected");
 
@@ -47,5 +55,6 @@ const start = async () => {
   }
 };
 
-
 start();
+
+export default app;

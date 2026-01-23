@@ -47,9 +47,14 @@ const institutionSchema = new mongoose.Schema(
 
     address: {
       street: String,
-      city: { type: String, index: true },
+      // city: { type: String, index: true },
       state: String,
       pincode: String,
+    },
+
+    credits: {
+      type: Number,
+      default: 20,
     },
 
     logo: String,

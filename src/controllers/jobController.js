@@ -42,11 +42,26 @@ export async function createJob(req, res) {
     }
 
     const job = await Job.create({
-      ...req.body,
-      postedBy: userId,
-      postedByRole: role,
-      institution: institutionId, // null for parent
+      institution: institution._id,
+      title: req.body.title,
+      description: req.body.description,
+      subjects: req.body.subjects,
+      salary: req.body.salary,
+      location: req.body.location,
+      jobType: req.body.jobType,
+      deadline: req.body.deadline,
+      status: "active",
     });
+
+    if (institution.credits < 5) {
+      return res.status(400).json({
+        success: false,
+        message: "Not enough credits to post job",
+      });
+    }
+
+    institution.credits -= 5;
+    await institution.save();
 
     return res.status(201).json({
       success: true,
@@ -87,11 +102,34 @@ export async function getAllJobs(req, res) {
   }
 }
 
-/**
- * =========================
- * GET MY JOBS (Institute / Parent)
- * =========================
- */
+
+
+export const getJobById = async (req, res) => {
+  try {
+    // The frontend sends the ID as a route parameter
+    const job = await Job.findById(req.params.id);
+    
+    if (!job) {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+    
+    res.status(200).json({
+  success: true,
+  job,
+});
+
+  } catch (error) {
+    console.error('Error fetching job:', error);
+    
+    // Handle invalid MongoDB ObjectId format
+    if (error.kind === 'ObjectId') {
+      return res.status(404).json({ message: 'Job not found' });
+    }
+    
+    res.status(500).json({ message: 'Server error' });
+  }
+};
+
 export async function getMyJobs(req, res) {
   try {
     const jobs = await Job.find({
@@ -111,11 +149,6 @@ export async function getMyJobs(req, res) {
   }
 }
 
-/**
- * =========================
- * UPDATE JOB
- * =========================
- */
 export async function updateJob(req, res) {
   try {
     const { id } = req.params;

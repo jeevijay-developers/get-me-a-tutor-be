@@ -15,7 +15,7 @@ const teacherSchema = new mongoose.Schema(
     experienceYears: {
       type: Number,
       default: 0,
-      index: true,
+      // index: true,
     },
 
     subjects: [{
@@ -36,7 +36,7 @@ const teacherSchema = new mongoose.Schema(
       type: String,
       lowercase: true,
       trim: true,
-      index: true,
+      // index: true,
     },
 
     expectedSalary: {
@@ -81,7 +81,10 @@ const teacherSchema = new mongoose.Schema(
       trim: true,
     }],
   },
-  { timestamps: true }
+  { timestamps: true,
+    toJSON: { virtuals: true },
+    toObject: { virtuals: true },
+  }
 );
 
 // TEXT SEARCH
@@ -96,5 +99,17 @@ teacherSchema.index({ city: 1 });
 teacherSchema.index({ experienceYears: 1 });
 teacherSchema.index({ "expectedSalary.min": 1 });
 teacherSchema.index({ "expectedSalary.max": 1 });
+
+teacherSchema.virtual("isComplete").get(function () {
+  return (
+    this.experienceYears > 0 &&
+    this.subjects.length > 0 &&
+    this.classes.length > 0 &&
+    this.city &&
+    this.bio &&
+    this.expectedSalary?.min > 0
+  );
+});
+
 
 export default mongoose.model("TeacherProfile", teacherSchema);
