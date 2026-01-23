@@ -1,9 +1,17 @@
 import JobApplication from "../models/JobApplication.js";
 import Job from "../models/Job.js";
+import User from "../models/User.js";
+import Transaction from "../models/Transaction.js";
+import mongoose from "mongoose";
 
 // ---------------- APPLY TO JOB ----------------
+
 export async function applyToJob(req, res) {
+  const session = await mongoose.startSession();
+
   try {
+    await session.startTransaction();
+
     const { jobId, message } = req.body;
 
     const job = await Job.findById(jobId);
@@ -11,19 +19,50 @@ export async function applyToJob(req, res) {
       return res.status(404).json({ message: "Job not available" });
     }
 
-    const application = await JobApplication.create({
-      job: job._id,
-      tutor: req.user._id,
-      jobOwner: job.postedBy,
-      jobOwnerRole: job.postedByRole,
-      message,
-    });
+    const user = await User.findOneAndUpdate(
+      { _id: req.user._id, credits: { $gte: 1 } },
+      { $inc: { credits: -1 } },
+      { new: true, session }
+    );
+
+    if (!user) {
+      throw new Error("INSUFFICIENT_CREDITS");
+    }
+
+    const application = await JobApplication.create(
+      [{
+        job: job._id,
+        tutor: req.user._id,
+        jobOwner: job.postedBy,
+        jobOwnerRole: job.postedByRole,
+        message,
+      }],
+      { session }
+    );
+
+    await Transaction.create(
+      [{
+        user: req.user._id,
+        type: "CREDIT_DEBIT",
+        credits: -1,
+        reason: "JOB_APPLY",
+        balanceAfter: user.credits,
+      }],
+      { session }
+    );
+
+    await session.commitTransaction();
 
     return res.status(201).json({
       success: true,
-      application,
+      application: application[0],
     });
+
   } catch (err) {
+    await session.abortTransaction();
+    if (err.message === "INSUFFICIENT_CREDITS") {
+      return res.status(402).json({ message: "Insufficient credits" });
+    }
     if (err.code === 11000) {
       return res.status(400).json({
         message: "Already applied to this job",
@@ -31,6 +70,8 @@ export async function applyToJob(req, res) {
     }
     console.error("applyToJob error:", err);
     return res.status(500).json({ message: "Server error" });
+  } finally {
+    session.endSession();
   }
 }
 

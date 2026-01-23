@@ -8,6 +8,8 @@ import {
   logout,
   forgotPassword,
   resetPassword,
+  getMe,
+  getUserById,
 } from "../controllers/authController.js";
 
 const router = express.Router();
@@ -27,5 +29,9 @@ router.post("/logout", logout);
 // password
 router.post("/forgot-password", forgotPassword);
 router.post("/reset-password", resetPassword);
+
+// user info
+router.get("/me", getMe);
+router.get("/:id", getUserById);
 
 export default router;

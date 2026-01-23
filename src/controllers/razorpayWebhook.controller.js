@@ -1,16 +1,18 @@
 import crypto from "crypto";
+import User from "../models/User.js";
+import Transaction from "../models/Transaction.js";
 
-export const razorpayWebhook = (req, res) => {
+export const razorpayWebhook = async (req, res) => {
   const secret = process.env.RAZORPAY_WEBHOOK_SECRET;
-
-  const signature = crypto
-    .createHmac("sha256", secret)
-    .update(req.body) // raw buffer
-    .digest("hex");
 
   const razorpaySignature = req.headers["x-razorpay-signature"];
 
-  if (signature !== razorpaySignature) {
+  const expectedSignature = crypto
+    .createHmac("sha256", secret)
+    .update(req.body) // ✅ RAW BUFFER
+    .digest("hex");
+
+  if (expectedSignature !== razorpaySignature) {
     return res.status(400).send("Invalid signature");
   }
 
@@ -23,9 +25,33 @@ export const razorpayWebhook = (req, res) => {
     const userId = payment.notes.userId;
     const credits = Number(payment.notes.credits);
 
-    // ✅ Call your existing logic
-    // await userService.addCredits(userId, credits);
-    // await transactionService.create({ paymentId });
+    // 🔒 IDENTITY CHECK
+    const alreadyProcessed = await Transaction.findOne({
+      razorpayPaymentId: paymentId,
+    });
+
+    if (alreadyProcessed) {
+      return res.json({ status: "duplicate" });
+    }
+
+    // ✅ ADD CREDITS
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $inc: { credits } },
+      { new: true }
+    );
+
+    // 🧾 LOG TRANSACTION
+    await Transaction.create({
+      user: userId,
+      type: "CREDIT_PURCHASE",
+      credits,
+      reason: "PAYMENT",
+      razorpayPaymentId: paymentId,
+      razorpayOrderId: payment.order_id, // Get order ID from payment object
+      status: "SUCCESS",
+      balanceAfter: user.credits,
+    });
   }
 
   res.json({ status: "ok" });

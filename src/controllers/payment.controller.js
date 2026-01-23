@@ -1,10 +1,18 @@
-import { createOrder } from "../services/razorpay.service.js";
+import { createOrder, verifyPaymentAndAddCredits } from "../services/razorpay.service.js";
 
 export const createOrderController = async (req, res) => {
   try {
-    const { userId, packId } = req.body;
-    const order = await createOrder(userId, packId);
-    res.json(order);
+    // The createOrder function is now a controller function itself
+    // Just calling it directly here
+    await createOrder(req, res);
+  } catch (err) {
+    res.status(400).json({ error: err.message });
+  }
+};
+
+export const verifyPaymentController = async (req, res) => {
+  try {
+    await verifyPaymentAndAddCredits(req, res);
   } catch (err) {
     res.status(400).json({ error: err.message });
   }

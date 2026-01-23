@@ -1,5 +1,7 @@
 import Job from "../models/Job.js";
 import Institution from "../models/Institution.js";
+import Transaction from "../models/Transaction.js";
+import mongoose from "mongoose";
 
 /**
  * =========================
@@ -19,54 +21,91 @@ export async function createJob(req, res) {
       });
     }
 
-    let institutionId = null;
+    const session = await mongoose.startSession();
 
-    // If institute → institution must exist
-    if (role === "institute") {
-      const institution = await Institution.findOne({ owner: userId });
-      if (!institution) {
+    try {
+      await session.startTransaction();
+
+      let institutionId = null;
+
+      // If institute → institution must exist
+      if (role === "institute") {
+        const institution = await Institution.findOne({ owner: userId });
+        if (!institution) {
+          return res.status(400).json({
+            success: false,
+            message: "Create institution profile first",
+          });
+        }
+
+        // Check if institute has enough credits
+        if (institution.credits < 1) {
+          return res.status(402).json({
+            success: false,
+            message: "Not enough credits to post job",
+          });
+        }
+
+        institutionId = institution._id;
+
+        // Deduct credit atomically
+        const updatedInstitution = await Institution.findOneAndUpdate(
+          { _id: institution._id, credits: { $gte: 1 } },
+          { $inc: { credits: -1 } },
+          { new: true, session }
+        );
+
+        if (!updatedInstitution) {
+          throw new Error("INSUFFICIENT_CREDITS");
+        }
+
+        // Create transaction record
+        await Transaction.create([{
+          user: userId,
+          type: "CREDIT_DEBIT",
+          credits: -1,
+          reason: "JOB_POST",
+          balanceAfter: updatedInstitution.credits,
+        }], { session });
+      }
+
+      // Salary validation
+      if (req.body.salary && req.body.salary < 10000) {
         return res.status(400).json({
           success: false,
-          message: "Create institution profile first",
+          message: "Minimum salary must be 10000",
         });
       }
-      institutionId = institution._id;
-    }
 
-    // Salary validation
-    if (req.body.salary && req.body.salary < 10000) {
-      return res.status(400).json({
-        success: false,
-        message: "Minimum salary must be 10000",
+      const job = await Job.create([{
+        institution: institutionId,
+        postedBy: userId,
+        postedByRole: role,
+        title: req.body.title,
+        description: req.body.description,
+        subjects: req.body.subjects,
+        salary: req.body.salary,
+        location: req.body.location,
+        jobType: req.body.jobType,
+        deadline: req.body.deadline,
+        status: "active",
+      }], { session });
+
+      await session.commitTransaction();
+
+      return res.status(201).json({
+        success: true,
+        job: job[0],
       });
+    } catch (err) {
+      await session.abortTransaction();
+      if (err.message === "INSUFFICIENT_CREDITS") {
+        return res.status(402).json({ message: "Insufficient credits" });
+      }
+      throw err;
+    } finally {
+      session.endSession();
     }
-
-    const job = await Job.create({
-      institution: institution._id,
-      title: req.body.title,
-      description: req.body.description,
-      subjects: req.body.subjects,
-      salary: req.body.salary,
-      location: req.body.location,
-      jobType: req.body.jobType,
-      deadline: req.body.deadline,
-      status: "active",
-    });
-
-    if (institution.credits < 5) {
-      return res.status(400).json({
-        success: false,
-        message: "Not enough credits to post job",
-      });
-    }
-
-    institution.credits -= 5;
-    await institution.save();
-
-    return res.status(201).json({
-      success: true,
-      job,
-    });
   } catch (err) {
     console.error("createJob error:", err);
     return res.status(500).json({
