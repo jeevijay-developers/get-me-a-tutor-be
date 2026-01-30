@@ -1,5 +1,6 @@
 import Job from "../models/Job.js";
 import Institution from "../models/Institution.js";
+import User from "../models/User.js";
 import Transaction from "../models/Transaction.js";
 import mongoose from "mongoose";
 
@@ -22,39 +23,11 @@ export async function createJob(req, res) {
     }
 
     let institutionId = null;
-    let updatedInstitution = null;
+    let creditsUsed = false;
+    let creditsAfter = 0;
 
     // ===============================
-    // INSTITUTE CREDIT DEDUCTION
-    // ===============================
-    if (role === "institute") {
-      const institution = await Institution.findOne({ owner: userId });
-      if (!institution) {
-        return res.status(400).json({
-          success: false,
-          message: "Create institution profile first",
-        });
-      }
-
-      // 🔒 ATOMIC CREDIT DEDUCTION
-      updatedInstitution = await Institution.findOneAndUpdate(
-        { _id: institution._id, credits: { $gte: 1 } },
-        { $inc: { credits: -1 } },
-        { new: true }
-      );
-
-      if (!updatedInstitution) {
-        return res.status(402).json({
-          success: false,
-          message: "Insufficient credits to post job",
-        });
-      }
-
-      institutionId = updatedInstitution._id;
-    }
-
-    // ===============================
-    // CREATE JOB
+    // CREATE JOB FIRST
     // ===============================
     const job = await Job.create({
       institution: institutionId,
@@ -71,15 +44,73 @@ export async function createJob(req, res) {
     });
 
     // ===============================
-    // LOG TRANSACTION
+    // DEDUCT CREDIT AFTER JOB CREATION
     // ===============================
     if (role === "institute") {
+      const institution = await Institution.findOne({ owner: userId });
+      if (!institution) {
+        // Delete the job we just created
+        await Job.findByIdAndDelete(job._id);
+        return res.status(400).json({
+          success: false,
+          message: "Create institution profile first",
+        });
+      }
+
+      // 🔒 ATOMIC CREDIT DEDUCTION
+      const updatedInstitution = await Institution.findOneAndUpdate(
+        { _id: institution._id, credits: { $gte: 1 } },
+        { $inc: { credits: -1 } },
+        { new: true }
+      );
+
+      if (!updatedInstitution) {
+        // Delete the job if credit deduction fails
+        await Job.findByIdAndDelete(job._id);
+        return res.status(402).json({
+          success: false,
+          message: "Insufficient credits to post job",
+        });
+      }
+
+      creditsUsed = true;
+      creditsAfter = updatedInstitution.credits;
+      institutionId = updatedInstitution._id;
+
+      // Update job with institution ID
+      await Job.findByIdAndUpdate(job._id, { institution: institutionId });
+    } else if (role === "parent") {
+      // Parent credit deduction
+      const user = await User.findOneAndUpdate(
+        { _id: userId, credits: { $gte: 1 } },
+        { $inc: { credits: -1 } },
+        { new: true }
+      );
+
+      if (!user) {
+        // Delete the job if credit deduction fails
+        await Job.findByIdAndDelete(job._id);
+        return res.status(402).json({
+          success: false,
+          message: "Insufficient credits to post job",
+        });
+      }
+
+      creditsUsed = true;
+      creditsAfter = user.credits;
+      await user.save();
+    }
+
+    // ===============================
+    // LOG TRANSACTION
+    // ===============================
+    if (creditsUsed) {
       await Transaction.create({
         user: userId,
         type: "CREDIT_DEBIT",
         credits: -1,
         reason: "JOB_POST",
-        balanceAfter: updatedInstitution.credits,
+        balanceAfter: creditsAfter,
       });
     }
 

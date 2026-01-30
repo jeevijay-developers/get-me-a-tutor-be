@@ -17,7 +17,13 @@ export async function upsertTeacherProfile(req, res) {
     let profile = await TeacherProfile.findOne({ userId });
 
     if (!profile) {
-      profile = await TeacherProfile.create({ userId, ...payload });
+      // Mark as complete when creating new profile with data
+      const isNew = true;
+      profile = await TeacherProfile.create({ 
+        userId, 
+        ...payload,
+        isComplete: true 
+      });
     } else {
       // Only update allowed fields (to avoid accidental overwrite)
       const allowed = [
@@ -30,6 +36,8 @@ export async function upsertTeacherProfile(req, res) {
           profile[key] = payload[key];
         }
       });
+      // Mark as complete when updating profile
+      profile.isComplete = true;
       await profile.save();
     }
 

@@ -74,6 +74,7 @@ const teacherSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
+  
 
     tags: [{
       type: String,
@@ -109,7 +110,8 @@ teacherSchema.virtual("isComplete").get(function () {
     this.bio &&
     this.expectedSalary?.min > 0
   );
-});
+}
+);
 
 
 export default mongoose.model("TeacherProfile", teacherSchema);

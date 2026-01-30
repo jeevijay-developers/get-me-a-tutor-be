@@ -32,9 +32,8 @@ export async function applyToJob(req, res) {
       const application = await JobApplication.create({
         job: job._id,
         tutor: req.user._id,
-        jobOwner: job.postedBy,
-        jobOwnerRole: job.postedByRole,
-        message,
+        institution: job.institution,
+        message: message || "",
       });
 
       // 4️⃣ Log transaction after successful application creation
