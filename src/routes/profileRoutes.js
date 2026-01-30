@@ -10,6 +10,7 @@ import {
   getMyStudents,
   updateStudent,
   deleteStudent,
+  getMyStudentProfile
 } from "../controllers/studentProfileController.js";
 
 const router = express.Router();
@@ -130,6 +131,14 @@ router.delete(
   auth,
   allowRoles("parent"),
   deleteStudent
+);
+
+// GET /profile/student/me → get student's own profile (for students)
+router.get(
+  "/student/me",
+  auth,
+  allowRoles("student"),
+  getMyStudentProfile
 );
 
 export default router;

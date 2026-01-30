@@ -1,7 +1,7 @@
 import razorpay from "../config/razorpay.js";
-import User from "../models/User.js";
 import Transaction from "../models/Transaction.js";
 import crypto from "crypto";
+import process from "process";
 
 // Define credit packages (amount in paise)
 const CREDIT_PACKS = {

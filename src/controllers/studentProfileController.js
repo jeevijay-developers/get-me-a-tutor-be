@@ -140,3 +140,54 @@ export async function deleteStudent(req, res) {
     return res.status(500).json({ success: false, message: "Server error" });
   }
 }
+
+// GET /profile/student/me  (role: student)
+export async function getMyStudentProfile(req, res) {
+  try {
+    const userId = req.user._id;
+
+    // Find the parent profile that belongs to this user
+    const parentProfile = await ParentProfile.findOne({ userId });
+
+    if (!parentProfile) {
+      // If user is a student but not a parent, they might be a child in another parent's profile
+      // In this system, students are typically children managed by parents
+      // So we'll return a different response for actual student users
+      return res.json({
+        profile: null,
+        isComplete: false,
+        message: "Student profile not found under your parent account"
+      });
+    }
+
+    // Find all students associated with this parent
+    const students = await StudentProfile.find({ parent: parentProfile._id });
+
+    if (students.length === 0) {
+      return res.json({
+        profile: null,
+        isComplete: false,
+        message: "No students found under your parent account"
+      });
+    }
+
+    // If the logged-in user is a parent viewing their students
+    if (req.user.role === 'parent') {
+      return res.json({
+        profile: students, // Return all students for the parent
+        isComplete: students.length > 0,
+      });
+    }
+
+    // For a student user, we need to identify which student record corresponds to them
+    // Since the system doesn't directly link student users to student profiles,
+    // we'll return the first student profile or all of them
+    return res.json({
+      profile: students.length === 1 ? students[0] : students,
+      isComplete: students.length > 0,
+    });
+  } catch (err) {
+    console.error("getMyStudentProfile error:", err);
+    return res.status(500).json({ success: false, message: "Server error" });
+  }
+}
