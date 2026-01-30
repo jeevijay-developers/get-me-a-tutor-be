@@ -22,15 +22,31 @@ export async function createJob(req, res) {
       });
     }
 
+    // 🚫 VALIDATE BEFORE CREATING OR TOUCHING CREDITS
+    if (!req.body.title || !req.body.description || !req.body.salary || !req.body.location) {
+      return res.status(400).json({
+        success: false,
+        message: "Title, description, salary, and location are required",
+      });
+    }
+
+    // Salary must be >= 10,000
+    if (Number(req.body.salary) < 10000) {
+      return res.status(400).json({
+        success: false,
+        message: "Salary must be at least ₹10,000",
+      });
+    }
+
     let institutionId = null;
     let creditsUsed = false;
     let creditsAfter = 0;
 
     // ===============================
-    // CREATE JOB FIRST
+    // CREATE JOB FIRST (NO CREDITS YET)
     // ===============================
     const job = await Job.create({
-      institution: institutionId,
+      institution: null,
       postedBy: userId,
       postedByRole: role,
       title: req.body.title,
@@ -57,7 +73,17 @@ export async function createJob(req, res) {
         });
       }
 
-      // 🔒 ATOMIC CREDIT DEDUCTION
+      // 🔒 ATOMIC CREDIT DEDUCTION - CHECK BEFORE DEDUCTING
+      if (institution.credits < 1) {
+        // Delete the job if insufficient credits
+        await Job.findByIdAndDelete(job._id);
+        return res.status(402).json({
+          success: false,
+          message: "Insufficient credits to post job",
+        });
+      }
+
+      // Now deduct - atomic operation with condition
       const updatedInstitution = await Institution.findOneAndUpdate(
         { _id: institution._id, credits: { $gte: 1 } },
         { $inc: { credits: -1 } },
@@ -65,7 +91,7 @@ export async function createJob(req, res) {
       );
 
       if (!updatedInstitution) {
-        // Delete the job if credit deduction fails
+        // Delete the job if credit deduction fails (race condition)
         await Job.findByIdAndDelete(job._id);
         return res.status(402).json({
           success: false,
@@ -81,14 +107,25 @@ export async function createJob(req, res) {
       await Job.findByIdAndUpdate(job._id, { institution: institutionId });
     } else if (role === "parent") {
       // Parent credit deduction
-      const user = await User.findOneAndUpdate(
+      const user = await User.findById(userId);
+      if (!user || user.credits < 1) {
+        // Delete the job if insufficient credits
+        await Job.findByIdAndDelete(job._id);
+        return res.status(402).json({
+          success: false,
+          message: "Insufficient credits to post job",
+        });
+      }
+
+      // Deduct credit atomically
+      const updatedUser = await User.findOneAndUpdate(
         { _id: userId, credits: { $gte: 1 } },
         { $inc: { credits: -1 } },
         { new: true }
       );
 
-      if (!user) {
-        // Delete the job if credit deduction fails
+      if (!updatedUser) {
+        // Delete the job if credit deduction fails (race condition)
         await Job.findByIdAndDelete(job._id);
         return res.status(402).json({
           success: false,
@@ -97,8 +134,7 @@ export async function createJob(req, res) {
       }
 
       creditsUsed = true;
-      creditsAfter = user.credits;
-      await user.save();
+      creditsAfter = updatedUser.credits;
     }
 
     // ===============================

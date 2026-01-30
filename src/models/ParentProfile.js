@@ -12,13 +12,7 @@ const parentSchema = new Schema(
       unique: true,
     },
 
-    // Parent basic info
-    name: {
-      type: String,
-      required: true,
-      trim: true,
-    },
-
+    // Parent basic info (name comes from User)
     phone: {
       type: String,
       trim: true,
