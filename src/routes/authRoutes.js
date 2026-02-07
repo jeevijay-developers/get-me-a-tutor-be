@@ -11,6 +11,7 @@ import {
   getMe,
   getUserById,
 } from "../controllers/authController.js";
+import auth from "../middleware/auth.js";
 
 const router = express.Router();
 
@@ -30,8 +31,8 @@ router.post("/logout", logout);
 router.post("/forgot-password", forgotPassword);
 router.post("/reset-password", resetPassword);
 
-// user info
-router.get("/me", getMe);
-router.get("/:id", getUserById);
+// user info (protected routes)
+router.get("/me", auth, getMe);
+router.get("/:id", auth, getUserById);
 
 export default router;

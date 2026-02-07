@@ -73,24 +73,15 @@ export async function createJob(req, res) {
         });
       }
 
-      // 🔒 ATOMIC CREDIT DEDUCTION - CHECK BEFORE DEDUCTING
-      if (institution.credits < 1) {
-        // Delete the job if insufficient credits
-        await Job.findByIdAndDelete(job._id);
-        return res.status(402).json({
-          success: false,
-          message: "Insufficient credits to post job",
-        });
-      }
-
-      // Now deduct - atomic operation with condition
-      const updatedInstitution = await Institution.findOneAndUpdate(
-        { _id: institution._id, credits: { $gte: 1 } },
+      // 🔒 ATOMIC CREDIT DEDUCTION FROM USER (not Institution)
+      // This ensures consistency with /auth/me endpoint
+      const updatedUser = await User.findOneAndUpdate(
+        { _id: userId, credits: { $gte: 1 } },
         { $inc: { credits: -1 } },
         { new: true }
       );
 
-      if (!updatedInstitution) {
+      if (!updatedUser) {
         // Delete the job if credit deduction fails (race condition)
         await Job.findByIdAndDelete(job._id);
         return res.status(402).json({
@@ -100,8 +91,8 @@ export async function createJob(req, res) {
       }
 
       creditsUsed = true;
-      creditsAfter = updatedInstitution.credits;
-      institutionId = updatedInstitution._id;
+      creditsAfter = updatedUser.credits;
+      institutionId = institution._id;
 
       // Update job with institution ID
       await Job.findByIdAndUpdate(job._id, { institution: institutionId });

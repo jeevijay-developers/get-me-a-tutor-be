@@ -395,6 +395,10 @@ export async function resetPassword(req, res) {
 // ------------------ GET USER INFO (for credits) ------------------
 export async function getMe(req, res) {
   try {
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    
     const user = await User.findById(req.user._id).select('-password');
     if (!user) {
       return res.status(404).json({ message: 'User not found' });

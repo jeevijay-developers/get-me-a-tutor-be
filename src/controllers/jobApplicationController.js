@@ -1,6 +1,7 @@
 import JobApplication from "../models/JobApplication.js";
 import Job from "../models/Job.js";
 import User from "../models/User.js";
+import Institution from "../models/Institution.js";
 import Transaction from "../models/Transaction.js";
 import mongoose from "mongoose";
 
