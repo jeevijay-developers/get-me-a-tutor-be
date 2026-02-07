@@ -160,13 +160,61 @@ export const verifyPaymentAndAddCredits = async (req, res) => {
       });
     }
 
-    // 5. 🔄 NOTE: Credits will be added by webhook (payment.captured event)
-    // Frontend should wait and then refresh credits
-    // This endpoint just verifies the signature and ensures we don't process twice
+    // 5. ⚡️ REAL-TIME UPDATE: Fetch payment details to get credits
+    // We don't want to wait for webhook for the UI to update
+    const payment = await razorpay.payments.fetch(razorpay_payment_id);
+    
+    if (!payment || payment.status !== "captured") {
+      // If not captured yet, we can't add credits. 
+      // But typically it is captured by now if success.
+      // If strictly "authorized", we might capture it here, 
+      // but usually the flow is auto-capture.
+      console.warn(`Payment ${razorpay_payment_id} status is ${payment.status}`);
+      // Fallback to webhook if not captured
+      return res.json({
+        success: true,
+        message: "Payment verified. Credits processing...",
+      });
+    }
+
+    const credits = Number(payment.notes?.credits);
+    if (!credits || credits <= 0) {
+       console.error("No credits found in payment notes");
+       return res.status(400).json({ success: false, message: "Invalid payment data" });
+    }
+
+    // 6. ✅ ATOMIC UPDATE: Increment user credits
+    // Use User model (consolidated)
+    const User = (await import("../models/User.js")).default;
+    
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { $inc: { credits } },
+      { new: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ success: false, message: "User not found" });
+    }
+
+    // 7. 🧾 CREATE TRANSACTION RECORD
+    await Transaction.create({
+      user: userId,
+      type: "CREDIT_PURCHASE",
+      credits,
+      reason: "PAYMENT",
+      razorpayPaymentId: razorpay_payment_id,
+      razorpayOrderId: payment.order_id,
+      status: "SUCCESS",
+      balanceAfter: user.credits,
+    });
+
+    console.log(`✅ Real-time credits added: user=${userId}, credits=${credits}, new_balance=${user.credits}`);
 
     return res.json({
       success: true,
-      message: "Payment verified successfully. Credits will be added shortly.",
+      message: "Payment verified and credits added successfully.",
+      credits: user.credits
     });
   } catch (error) {
     console.error("Error verifying payment:", error);
