@@ -142,20 +142,29 @@ export async function getReceivedApplications(req, res) {
 // ---------------- UPDATE APPLICATION STATUS ----------------
 export async function updateApplicationStatus(req, res) {
   try {
-    const application = await JobApplication.findOne({
-      _id: req.params.applicationId,
-      jobOwner: req.user._id,
-    });
+    const { status } = req.body;
+    const { applicationId } = req.params;
+
+    // 1. Find the application
+    const application = await JobApplication.findById(applicationId).populate("job");
 
     if (!application) {
-      return res.status(403).json({ message: "Unauthorized" });
+      return res.status(404).json({ message: "Application not found" });
     }
 
-    application.status = req.body.status;
+    // 2. Verify ownership: The logged-in user must be the poster of the job
+    // We compare strings to avoid ObjectId reference issues
+    if (application.job.postedBy.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Unauthorized: You do not own this job" });
+    }
+
+    // 3. Update status
+    application.status = status;
     await application.save();
 
     return res.json({ success: true, application });
   } catch (err) {
+    console.error("updateApplicationStatus error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 }

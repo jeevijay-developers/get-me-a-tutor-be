@@ -2,7 +2,7 @@ import dotenv from "dotenv";
 dotenv.config();
 
 const allowedOrigins = [
-  "http://localhost:8080", // frontend
+  "http://localhost:5173", // frontend
 ];
 
 const corsOptions = {

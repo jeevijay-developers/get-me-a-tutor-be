@@ -162,7 +162,30 @@ export async function createJob(req, res) {
  */
 export async function getAllJobs(req, res) {
   try {
-    const jobs = await Job.find({ status: "active" })
+    const { q, subject, location } = req.query;
+    const query = { status: "active" };
+
+    // Search by title or description
+    if (q) {
+      query.$or = [
+        { title: { $regex: q, $options: "i" } },
+        { description: { $regex: q, $options: "i" } }
+      ];
+    }
+
+    // Filter by subject
+    if (subject && subject !== 'All Subjects') {
+      // Use exact match or regex depending on how strict you want to be
+      // Assuming subjects array in DB contains exact strings from the frontend list
+      query.subjects = subject;
+    }
+
+    // Filter by location
+    if (location) {
+      query.location = { $regex: location, $options: "i" };
+    }
+
+    const jobs = await Job.find(query)
       .populate("institution", "institutionName city")
       .populate("postedBy", "name")
       .sort({ createdAt: -1 });
@@ -286,7 +309,37 @@ export async function closeJob(req, res) {
       job,
     });
   } catch (err) {
-    console.error("closeJob error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+}
+
+/**
+ * =========================
+ * DELETE JOB
+ * =========================
+ */
+export async function deleteJob(req, res) {
+  try {
+    const { id } = req.params;
+
+    const job = await Job.findOneAndDelete({ _id: id, postedBy: req.user._id });
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found or unauthorized",
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Job deleted successfully",
+    });
+  } catch (err) {
+    console.error("deleteJob error:", err);
     return res.status(500).json({
       success: false,
       message: "Server error",
