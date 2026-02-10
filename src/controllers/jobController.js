@@ -1,5 +1,8 @@
 import Job from "../models/Job.js";
 import Institution from "../models/Institution.js";
+import User from "../models/User.js";
+import Transaction from "../models/Transaction.js";
+import mongoose from "mongoose";
 
 /**
  * =========================
@@ -11,7 +14,7 @@ export async function createJob(req, res) {
   try {
     const { role, _id: userId } = req.user;
 
-    // ❌ Block tutors & students
+    // ❌ Block invalid roles
     if (!["institute", "parent"].includes(role)) {
       return res.status(403).json({
         success: false,
@@ -19,30 +22,33 @@ export async function createJob(req, res) {
       });
     }
 
-    let institutionId = null;
-
-    // If institute → institution must exist
-    if (role === "institute") {
-      const institution = await Institution.findOne({ owner: userId });
-      if (!institution) {
-        return res.status(400).json({
-          success: false,
-          message: "Create institution profile first",
-        });
-      }
-      institutionId = institution._id;
-    }
-
-    // Salary validation
-    if (req.body.salary && req.body.salary < 10000) {
+    // 🚫 VALIDATE BEFORE CREATING OR TOUCHING CREDITS
+    if (!req.body.title || !req.body.description || !req.body.salary || !req.body.location) {
       return res.status(400).json({
         success: false,
-        message: "Minimum salary must be 10000",
+        message: "Title, description, salary, and location are required",
       });
     }
 
+    // Salary must be >= 10,000
+    if (Number(req.body.salary) < 10000) {
+      return res.status(400).json({
+        success: false,
+        message: "Salary must be at least ₹10,000",
+      });
+    }
+
+    let institutionId = null;
+    let creditsUsed = false;
+    let creditsAfter = 0;
+
+    // ===============================
+    // CREATE JOB FIRST (NO CREDITS YET)
+    // ===============================
     const job = await Job.create({
-      institution: institution._id,
+      institution: null,
+      postedBy: userId,
+      postedByRole: role,
       title: req.body.title,
       description: req.body.description,
       subjects: req.body.subjects,
@@ -53,20 +59,93 @@ export async function createJob(req, res) {
       status: "active",
     });
 
-    if (institution.credits < 5) {
-      return res.status(400).json({
-        success: false,
-        message: "Not enough credits to post job",
-      });
+    // ===============================
+    // DEDUCT CREDIT AFTER JOB CREATION
+    // ===============================
+    if (role === "institute") {
+      const institution = await Institution.findOne({ owner: userId });
+      if (!institution) {
+        // Delete the job we just created
+        await Job.findByIdAndDelete(job._id);
+        return res.status(400).json({
+          success: false,
+          message: "Create institution profile first",
+        });
+      }
+
+      // 🔒 ATOMIC CREDIT DEDUCTION FROM USER (not Institution)
+      // This ensures consistency with /auth/me endpoint
+      const updatedUser = await User.findOneAndUpdate(
+        { _id: userId, credits: { $gte: 1 } },
+        { $inc: { credits: -1 } },
+        { new: true }
+      );
+
+      if (!updatedUser) {
+        // Delete the job if credit deduction fails (race condition)
+        await Job.findByIdAndDelete(job._id);
+        return res.status(402).json({
+          success: false,
+          message: "Insufficient credits to post job",
+        });
+      }
+
+      creditsUsed = true;
+      creditsAfter = updatedUser.credits;
+      institutionId = institution._id;
+
+      // Update job with institution ID
+      await Job.findByIdAndUpdate(job._id, { institution: institutionId });
+    } else if (role === "parent") {
+      // Parent credit deduction
+      const user = await User.findById(userId);
+      if (!user || user.credits < 1) {
+        // Delete the job if insufficient credits
+        await Job.findByIdAndDelete(job._id);
+        return res.status(402).json({
+          success: false,
+          message: "Insufficient credits to post job",
+        });
+      }
+
+      // Deduct credit atomically
+      const updatedUser = await User.findOneAndUpdate(
+        { _id: userId, credits: { $gte: 1 } },
+        { $inc: { credits: -1 } },
+        { new: true }
+      );
+
+      if (!updatedUser) {
+        // Delete the job if credit deduction fails (race condition)
+        await Job.findByIdAndDelete(job._id);
+        return res.status(402).json({
+          success: false,
+          message: "Insufficient credits to post job",
+        });
+      }
+
+      creditsUsed = true;
+      creditsAfter = updatedUser.credits;
     }
 
-    institution.credits -= 5;
-    await institution.save();
+    // ===============================
+    // LOG TRANSACTION
+    // ===============================
+    if (creditsUsed) {
+      await Transaction.create({
+        user: userId,
+        type: "CREDIT_DEBIT",
+        credits: -1,
+        reason: "JOB_POST",
+        balanceAfter: creditsAfter,
+      });
+    }
 
     return res.status(201).json({
       success: true,
       job,
     });
+
   } catch (err) {
     console.error("createJob error:", err);
     return res.status(500).json({
@@ -83,7 +162,30 @@ export async function createJob(req, res) {
  */
 export async function getAllJobs(req, res) {
   try {
-    const jobs = await Job.find({ status: "active" })
+    const { q, subject, location } = req.query;
+    const query = { status: "active" };
+
+    // Search by title or description
+    if (q) {
+      query.$or = [
+        { title: { $regex: q, $options: "i" } },
+        { description: { $regex: q, $options: "i" } }
+      ];
+    }
+
+    // Filter by subject
+    if (subject && subject !== 'All Subjects') {
+      // Use exact match or regex depending on how strict you want to be
+      // Assuming subjects array in DB contains exact strings from the frontend list
+      query.subjects = subject;
+    }
+
+    // Filter by location
+    if (location) {
+      query.location = { $regex: location, $options: "i" };
+    }
+
+    const jobs = await Job.find(query)
       .populate("institution", "institutionName city")
       .populate("postedBy", "name")
       .sort({ createdAt: -1 });
@@ -207,7 +309,37 @@ export async function closeJob(req, res) {
       job,
     });
   } catch (err) {
-    console.error("closeJob error:", err);
+    return res.status(500).json({
+      success: false,
+      message: "Server error",
+    });
+  }
+}
+
+/**
+ * =========================
+ * DELETE JOB
+ * =========================
+ */
+export async function deleteJob(req, res) {
+  try {
+    const { id } = req.params;
+
+    const job = await Job.findOneAndDelete({ _id: id, postedBy: req.user._id });
+
+    if (!job) {
+      return res.status(404).json({
+        success: false,
+        message: "Job not found or unauthorized",
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: "Job deleted successfully",
+    });
+  } catch (err) {
+    console.error("deleteJob error:", err);
     return res.status(500).json({
       success: false,
       message: "Server error",

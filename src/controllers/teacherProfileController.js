@@ -17,7 +17,13 @@ export async function upsertTeacherProfile(req, res) {
     let profile = await TeacherProfile.findOne({ userId });
 
     if (!profile) {
-      profile = await TeacherProfile.create({ userId, ...payload });
+      // Mark as complete when creating new profile with data
+      const isNew = true;
+      profile = await TeacherProfile.create({ 
+        userId, 
+        ...payload,
+        isComplete: true 
+      });
     } else {
       // Only update allowed fields (to avoid accidental overwrite)
       const allowed = [
@@ -30,6 +36,8 @@ export async function upsertTeacherProfile(req, res) {
           profile[key] = payload[key];
         }
       });
+      // Mark as complete when updating profile
+      profile.isComplete = true;
       await profile.save();
     }
 
@@ -50,7 +58,7 @@ export async function getTeacherProfile(req, res) {
     const { userId } = req.params;
     if (!userId) return res.status(400).json({ message: "userId required" });
 
-    const profile = await TeacherProfile.findOne({ userId }).lean();
+    const profile = await TeacherProfile.findOne({ userId });
     if (!profile) return res.status(404).json({ message: "Profile not found" });
 
     // If not public, allow only owner
@@ -61,7 +69,7 @@ export async function getTeacherProfile(req, res) {
 
     // optionally populate basic user info
     const owner = await User.findById(profile.userId).select("name email phone role").lean();
-    return res.json({ profile, owner });
+    return res.json({ profile: profile.toObject({ virtuals: true }), owner });
   } catch (err) {
     console.error("getTeacherProfile error:", err);
     return res.status(500).json({ message: "Server error" });

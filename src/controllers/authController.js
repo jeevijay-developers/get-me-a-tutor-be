@@ -44,7 +44,7 @@ export async function signup(req, res) {
     const emailOTPHash = hashOTP(emailOTP);
     const expiry = Date.now() + OTP_EXPIRE_MS;
 
-    const user = await User.create({
+    let user = await User.create({
       name,
       email,
       phone,
@@ -53,6 +53,13 @@ export async function signup(req, res) {
       emailOTPHash,
       emailOTPExpires: expiry,
     });
+
+    // Initialize credits for tutors and institutes
+    if (role === "tutor" || role === "institute") {
+      user.credits = 5;
+      await user.save();
+    }
+
     // 🔥 AUTO-CREATE ROLE PROFILES
     if (role === "parent") {
       await ParentProfile.create({
@@ -72,7 +79,7 @@ export async function signup(req, res) {
       await Institution.create({
         owner: user._id,
 
-        institutionName: name, 
+        institutionName: name,
         institutionType: "coaching",
       });
     }
@@ -381,5 +388,63 @@ export async function resetPassword(req, res) {
   } catch (err) {
     console.error("resetPassword error:", err);
     return res.status(500).json({ message: "Server error" });
+  }
+}
+
+
+// ------------------ GET USER INFO (for credits) ------------------
+export async function getMe(req, res) {
+  try {
+    if (!req.user || !req.user._id) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
+    
+    const user = await User.findById(req.user._id).select('-password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    return res.json({
+      success: true,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        credits: user.credits,
+      },
+      credits: user?.credits ?? 0
+    });
+  } catch (err) {
+    console.error('getMe error:', err);
+    return res.status(500).json({ message: 'Server error' });
+  }
+}
+
+
+// ------------------ GET USER BY ID (for credits) ------------------
+export async function getUserById(req, res) {
+  try {
+    const user = await User.findById(req.params.id).select('-password');
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    return res.json({
+      success: true,
+      user: {
+        id: user._id,
+        name: user.name,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        credits: user.credits,
+      },
+      credits: user?.credits ?? 0
+    });
+  } catch (err) {
+    console.error('getUserById error:', err);
+    return res.status(500).json({ message: 'Server error' });
   }
 }

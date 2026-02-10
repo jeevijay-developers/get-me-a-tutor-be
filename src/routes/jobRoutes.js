@@ -8,6 +8,7 @@ import {
   getMyJobs,
   updateJob,
   closeJob,
+  deleteJob,
 } from "../controllers/jobController.js";
 
 const router = express.Router();
@@ -50,11 +51,20 @@ router.put("/:id", auth, allowRoles("institute"), updateJob);
  * Close job
  * Allowed: owner (institute/parent)
  */
+// Close job
 router.patch(
   "/:id/close",
   auth,
   allowRoles("institute", "parent"),
   closeJob
+);
+
+// Delete job
+router.delete(
+  "/:id",
+  auth,
+  allowRoles("institute", "parent"),
+  deleteJob
 );
 
 export default router;

@@ -1,34 +1,72 @@
 import JobApplication from "../models/JobApplication.js";
 import Job from "../models/Job.js";
+import User from "../models/User.js";
+import Institution from "../models/Institution.js";
+import Transaction from "../models/Transaction.js";
+import mongoose from "mongoose";
 
 // ---------------- APPLY TO JOB ----------------
+
 export async function applyToJob(req, res) {
   try {
     const { jobId, message } = req.body;
 
+    // 1️⃣ Validate job exists and is active
     const job = await Job.findById(jobId);
     if (!job || job.status !== "active") {
       return res.status(404).json({ message: "Job not available" });
     }
 
-    const application = await JobApplication.create({
-      job: job._id,
-      tutor: req.user._id,
-      jobOwner: job.postedBy,
-      jobOwnerRole: job.postedByRole,
-      message,
-    });
+    // 2️⃣ Atomically deduct credit using findOneAndUpdate to prevent race conditions
+    const user = await User.findOneAndUpdate(
+      { _id: req.user._id, credits: { $gte: 1 } },
+      { $inc: { credits: -1 } },
+      { new: true } // Return updated document
+    );
 
-    return res.status(201).json({
-      success: true,
-      application,
-    });
-  } catch (err) {
-    if (err.code === 11000) {
-      return res.status(400).json({
-        message: "Already applied to this job",
-      });
+    if (!user) {
+      return res.status(402).json({ message: "Insufficient credits" });
     }
+
+    // 3️⃣ Create application - wrap in try-catch to handle potential duplicate key errors
+    try {
+      const application = await JobApplication.create({
+        job: job._id,
+        tutor: req.user._id,
+        institution: job.institution,
+        message: message || "",
+      });
+
+      // 4️⃣ Log transaction after successful application creation
+      await Transaction.create({
+        user: req.user._id,
+        type: "CREDIT_DEBIT",
+        credits: -1,
+        reason: "JOB_APPLY",
+        balanceAfter: user.credits,
+      });
+
+      return res.status(201).json({
+        success: true,
+        application,
+      });
+    } catch (createErr) {
+      // If application creation failed, refund the deducted credit
+      await User.findByIdAndUpdate(
+        req.user._id,
+        { $inc: { credits: 1 } } // Refund the credit
+      );
+
+      // Handle duplicate key error specifically
+      if (createErr.code === 11000) {
+        return res.status(400).json({
+          message: "Already applied to this job",
+        });
+      }
+
+      throw createErr; // Re-throw other errors
+    }
+  } catch (err) {
     console.error("applyToJob error:", err);
     return res.status(500).json({ message: "Server error" });
   }
@@ -104,20 +142,29 @@ export async function getReceivedApplications(req, res) {
 // ---------------- UPDATE APPLICATION STATUS ----------------
 export async function updateApplicationStatus(req, res) {
   try {
-    const application = await JobApplication.findOne({
-      _id: req.params.applicationId,
-      jobOwner: req.user._id,
-    });
+    const { status } = req.body;
+    const { applicationId } = req.params;
+
+    // 1. Find the application
+    const application = await JobApplication.findById(applicationId).populate("job");
 
     if (!application) {
-      return res.status(403).json({ message: "Unauthorized" });
+      return res.status(404).json({ message: "Application not found" });
     }
 
-    application.status = req.body.status;
+    // 2. Verify ownership: The logged-in user must be the poster of the job
+    // We compare strings to avoid ObjectId reference issues
+    if (application.job.postedBy.toString() !== req.user._id.toString()) {
+      return res.status(403).json({ message: "Unauthorized: You do not own this job" });
+    }
+
+    // 3. Update status
+    application.status = status;
     await application.save();
 
     return res.json({ success: true, application });
   } catch (err) {
+    console.error("updateApplicationStatus error:", err);
     return res.status(500).json({ message: "Server error" });
   }
 }

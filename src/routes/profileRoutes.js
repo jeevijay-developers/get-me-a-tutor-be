@@ -10,6 +10,7 @@ import {
   getMyStudents,
   updateStudent,
   deleteStudent,
+  getMyStudentProfile
 } from "../controllers/studentProfileController.js";
 
 const router = express.Router();
@@ -79,6 +80,11 @@ router.get(
 );
 
 router.post("/teacher", auth, allowRoles("tutor"), upsertTeacherProfile);
+router.get("/teacher/me", auth, (req, res) => {
+  // Redirect to /teacher/:userId using the authenticated user's ID
+  req.params.userId = req.user?.id || req.user?._id?.toString();
+  return getTeacherProfile(req, res);
+});
 router.get("/teacher/:userId", auth, getTeacherProfile);
 
 
@@ -125,6 +131,14 @@ router.delete(
   auth,
   allowRoles("parent"),
   deleteStudent
+);
+
+// GET /profile/student/me → get student's own profile (for students)
+router.get(
+  "/student/me",
+  auth,
+  allowRoles("student"),
+  getMyStudentProfile
 );
 
 export default router;

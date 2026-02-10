@@ -59,4 +59,8 @@ const userSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+userSchema.add({
+  credits: { type: Number, default: 0 }
+});
+
 export default mongoose.model("User", userSchema);

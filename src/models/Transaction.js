@@ -2,9 +2,9 @@ import mongoose from "mongoose";
 
 const transactionSchema = new mongoose.Schema(
   {
-    institution: {
+    user: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Institution",
+      ref: "User",
       required: true,
     },
 
@@ -19,10 +19,20 @@ const transactionSchema = new mongoose.Schema(
       required: true,
     },
 
-    reason: String,
+    reason: {
+      type: String,
+      enum: ["JOB_APPLY", "JOB_POST", "PAYMENT"],
+    },
 
-    referenceId: {
-      type: mongoose.Schema.Types.ObjectId,
+    razorpayPaymentId: String,
+    razorpayOrderId: String,
+
+    balanceAfter: Number,
+
+    status: {
+      type: String,
+      enum: ["SUCCESS", "FAILED"],
+      default: "SUCCESS",
     },
   },
   { timestamps: true }
